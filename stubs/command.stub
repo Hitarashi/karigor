@@ -1,8 +1,0 @@
-use tracing::info;
-
-/// Custom console command or background task: {{ name_pascal }}.
-pub async fn execute() -> Result<(), Box<dyn std::error::Error>> {
-    info!(command = "{{ name_pascal }}", "Executing custom command");
-    println!("Executing {{ name_pascal }} command...");
-    Ok(())
-}

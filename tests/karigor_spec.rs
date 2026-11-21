@@ -107,7 +107,7 @@ async fn test_scaffolding_execution() {
     assert!(path.join("Cargo.toml").exists());
     assert!(path.join("src/main.rs").exists());
     assert!(path.join("src/routes/mod.rs").exists());
-    assert!(path.join("stubs/route.stub").exists());
+    assert!(!path.join("stubs").exists());
 
     let env_text = std::fs::read_to_string(path.join(".env")).unwrap();
     assert!(env_text.contains("PORT=5555"));
@@ -138,6 +138,7 @@ fn test_make_commands_execution() {
     assert!(execute_make_middleware("Audit", true).is_ok());
     assert!(execute_make_command("SyncDb", true).is_ok());
     assert!(execute_stub_publish(true).is_ok());
+    drop(std::fs::remove_dir_all("stubs"));
 }
 
 #[test]
@@ -152,6 +153,18 @@ fn test_stubs_rendering_and_borno_inflections() {
     let rendered = render_stub(&stub, &context).expect("failed to render stub");
     assert!(rendered.contains("use crate::controllers::category;"));
     assert!(rendered.contains("router.get(\"/\", category::index);"));
+}
+
+#[test]
+fn test_stub_publish_explicit() {
+    let temp_dir = std::env::temp_dir().join(format!("test_stubs_{}", std::process::id()));
+    let outcomes = druto_karigor::stubs::publish_stubs(&temp_dir, true).unwrap();
+    assert_eq!(outcomes.len(), 4);
+    assert!(temp_dir.join("route.stub").exists());
+    assert!(temp_dir.join("controller.stub").exists());
+    assert!(temp_dir.join("middleware.stub").exists());
+    assert!(temp_dir.join("command.stub").exists());
+    drop(std::fs::remove_dir_all(&temp_dir));
 }
 
 #[test]

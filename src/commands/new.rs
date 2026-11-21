@@ -7,7 +7,7 @@ use dialoguer::{Confirm, Input, Select, theme::ColorfulTheme};
 use indicatif::{ProgressBar, ProgressStyle};
 use tracing::info;
 
-use crate::{stubs, ui};
+use crate::ui;
 
 /// Executes project scaffolding.
 pub async fn execute_new(initial_name: Option<String>) -> Result<(), Box<dyn std::error::Error>> {
@@ -141,9 +141,6 @@ pub fn routes() -> Router {
         controllers_mod_rs,
     )?;
 
-    spinner.set_message("Ejecting customizable template stubs into ./stubs...");
-    stubs::publish_stubs(&project_dir.join("stubs"), true)?;
-
     spinner.set_message("Generating environment files (.env, .env.example)...");
     let env_content = "HOST=127.0.0.1\nPORT=5555\nAPP_ENV=development\n";
     fs::write(project_dir.join(".env"), env_content)?;
@@ -201,7 +198,6 @@ cargo karigor routes
     ui::print_success("Wrote Cargo.toml with Druto framework dependencies");
     ui::print_success("Generated HTTP server entrypoint in src/main.rs");
     ui::print_success("Configured initial routing table in src/routes/mod.rs");
-    ui::print_success("Published customizable stubs in stubs/");
     if init_git {
         ui::print_success("Initialized Git repository");
     }
