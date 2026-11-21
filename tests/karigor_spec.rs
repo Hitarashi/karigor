@@ -5,12 +5,14 @@ use druto_karigor::{
         doctor::execute_doctor,
         make::{
             execute_make_command, execute_make_controller, execute_make_middleware,
-            execute_make_route,
+            execute_make_route, execute_stub_publish,
         },
         middleware::execute_middleware,
         routes::execute_routes,
     },
+    injector::{inject_controller_module, inject_route_module},
     normalize_args,
+    stubs::{get_stub, render_stub},
     ui::{
         create_table, format_http_method, print_banner, print_error, print_info, print_section,
         print_success, print_warn,
@@ -99,11 +101,51 @@ fn test_middleware_execution() {
 
 #[test]
 fn test_make_commands_execution() {
-    assert!(execute_make_route("Users", false).is_ok());
-    assert!(execute_make_route("Orders", true).is_ok());
-    assert!(execute_make_controller("Users", true).is_ok());
-    assert!(execute_make_middleware("Audit").is_ok());
-    assert!(execute_make_command("SyncDb").is_ok());
+    assert!(execute_make_route("Users", false, true).is_ok());
+    assert!(execute_make_route("Orders", true, true).is_ok());
+    assert!(execute_make_controller("Users", true, true).is_ok());
+    assert!(execute_make_controller("Categories", false, true).is_ok());
+    assert!(execute_make_middleware("Audit", true).is_ok());
+    assert!(execute_make_command("SyncDb", true).is_ok());
+    assert!(execute_stub_publish(true).is_ok());
+}
+
+#[test]
+fn test_stubs_rendering_and_borno_inflections() {
+    let stub = get_stub("route.stub");
+    assert!(!stub.is_empty());
+
+    let context = serde_json::json!({
+        "name_snake": "category",
+        "has_controller": true,
+    });
+    let rendered = render_stub(&stub, &context).expect("failed to render stub");
+    assert!(rendered.contains("use crate::controllers::category;"));
+    assert!(rendered.contains("router.get(\"/\", category::index);"));
+}
+
+#[test]
+fn test_smart_injector_idempotence() {
+    let temp_dir = std::env::temp_dir().join(format!("karigor_test_{}", std::process::id()));
+    let routes_mod = temp_dir.join("routes").join("mod.rs");
+    let controllers_mod = temp_dir.join("controllers").join("mod.rs");
+
+    let outcome1 = inject_route_module(&routes_mod, "users").expect("first route injection");
+    assert!(outcome1.module_injected);
+    assert!(outcome1.route_mounted);
+
+    // Second injection must be idempotent (no duplicates)
+    let outcome2 = inject_route_module(&routes_mod, "users").expect("second route injection");
+    assert!(!outcome2.module_injected);
+    assert!(!outcome2.route_mounted);
+
+    // Controllers injection
+    let ctrl1 = inject_controller_module(&controllers_mod, "users").expect("first ctrl injection");
+    assert!(ctrl1);
+    let ctrl2 = inject_controller_module(&controllers_mod, "users").expect("second ctrl injection");
+    assert!(!ctrl2);
+
+    drop(std::fs::remove_dir_all(temp_dir));
 }
 
 #[test]

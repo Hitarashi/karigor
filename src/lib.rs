@@ -5,6 +5,8 @@ use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{EnvFilter, fmt};
 
 pub mod commands;
+pub mod injector;
+pub mod stubs;
 pub mod ui;
 
 /// Command-line argument specifications for Karigor.
@@ -57,6 +59,13 @@ pub enum Commands {
     },
     /// Display the active onion middleware pipeline
     Middleware,
+    /// Eject default template stubs into ./stubs for customization
+    #[command(name = "stub:publish", alias = "stubs:publish")]
+    StubPublish {
+        /// Overwrite existing stubs in ./stubs
+        #[arg(short, long)]
+        force: bool,
+    },
     /// Generate application components (controller, middleware, command)
     #[command(subcommand)]
     Make(MakeCommands),
@@ -74,6 +83,9 @@ pub enum MakeCommands {
         /// Generate a paired controller delegating handlers to it
         #[arg(short, long)]
         controller: bool,
+        /// Preview generated code without writing to disk
+        #[arg(long)]
+        dry_run: bool,
     },
     /// Scaffold a new route controller
     Controller {
@@ -82,16 +94,25 @@ pub enum MakeCommands {
         /// Generate API controller without view templates
         #[arg(long)]
         api: bool,
+        /// Preview generated code without writing to disk
+        #[arg(long)]
+        dry_run: bool,
     },
     /// Scaffold a custom onion middleware
     Middleware {
         /// Name of the middleware
         name: String,
+        /// Preview generated code without writing to disk
+        #[arg(long)]
+        dry_run: bool,
     },
     /// Scaffold a custom console command or background task
     Command {
         /// Name of the command
         name: String,
+        /// Preview generated code without writing to disk
+        #[arg(long)]
+        dry_run: bool,
     },
 }
 
@@ -148,17 +169,20 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Dev { host, port } => commands::dev::execute_dev(host, port).await?,
         Commands::Routes { filter, json } => commands::routes::execute_routes(filter, json)?,
         Commands::Middleware => commands::middleware::execute_middleware()?,
-        Commands::Make(MakeCommands::Route { name, controller }) => {
-            commands::make::execute_make_route(&name, controller)?
+        Commands::StubPublish { force } => commands::make::execute_stub_publish(force)?,
+        Commands::Make(MakeCommands::Route {
+            name,
+            controller,
+            dry_run,
+        }) => commands::make::execute_make_route(&name, controller, dry_run)?,
+        Commands::Make(MakeCommands::Controller { name, api, dry_run }) => {
+            commands::make::execute_make_controller(&name, api, dry_run)?
         }
-        Commands::Make(MakeCommands::Controller { name, api }) => {
-            commands::make::execute_make_controller(&name, api)?
+        Commands::Make(MakeCommands::Middleware { name, dry_run }) => {
+            commands::make::execute_make_middleware(&name, dry_run)?
         }
-        Commands::Make(MakeCommands::Middleware { name }) => {
-            commands::make::execute_make_middleware(&name)?
-        }
-        Commands::Make(MakeCommands::Command { name }) => {
-            commands::make::execute_make_command(&name)?
+        Commands::Make(MakeCommands::Command { name, dry_run }) => {
+            commands::make::execute_make_command(&name, dry_run)?
         }
         Commands::Doctor => commands::doctor::execute_doctor()?,
     }

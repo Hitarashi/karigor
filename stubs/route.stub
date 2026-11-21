@@ -1,0 +1,37 @@
+use druto::prelude::*;
+{% if has_controller %}
+use crate::controllers::{{ name_snake }};
+
+pub fn routes() -> Router {
+    let mut router = Router::new();
+    router.get("/", {{ name_snake }}::index);
+    router.post("/", {{ name_snake }}::store);
+    router.get("/:id", {{ name_snake }}::show);
+    router.put("/:id", {{ name_snake }}::update);
+    router.delete("/:id", {{ name_snake }}::destroy);
+    router
+}
+{% else %}
+pub fn routes() -> Router {
+    let mut router = Router::new();
+    router.get("/", index);
+    router.get("/:id", show);
+    router
+}
+
+async fn index(ctx: &mut HttpContext) -> impl IntoResponse {
+    Json(serde_json::json!({
+        "status": "ok",
+        "route": "{{ name_snake }}::index"
+    }))
+}
+
+async fn show(ctx: &mut HttpContext) -> impl IntoResponse {
+    let id = ctx.param("id").unwrap_or_default();
+    Json(serde_json::json!({
+        "status": "ok",
+        "id": id,
+        "route": "{{ name_snake }}::show"
+    }))
+}
+{% endif %}

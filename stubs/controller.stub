@@ -1,0 +1,46 @@
+use druto::prelude::*;
+
+{% if api %}
+/// Retrieves a list of {{ name_plural }}.
+pub async fn index(ctx: &mut HttpContext) -> impl IntoResponse {
+    Json(serde_json::json!({
+        "status": "ok",
+        "data": []
+    }))
+}
+
+/// Creates a new {{ name_singular }}.
+pub async fn store(ctx: &mut HttpContext) -> impl IntoResponse {
+    StatusCode::CREATED
+}
+
+/// Retrieves a specific {{ name_singular }} by identifier.
+pub async fn show(ctx: &mut HttpContext) -> impl IntoResponse {
+    let id = ctx.param("id").unwrap_or_default();
+    Json(serde_json::json!({
+        "status": "ok",
+        "id": id
+    }))
+}
+
+/// Updates an existing {{ name_singular }}.
+pub async fn update(ctx: &mut HttpContext) -> impl IntoResponse {
+    StatusCode::NO_CONTENT
+}
+
+/// Deletes an existing {{ name_singular }}.
+pub async fn destroy(ctx: &mut HttpContext) -> impl IntoResponse {
+    StatusCode::NO_CONTENT
+}
+{% else %}
+/// Renders the {{ name_plural }} overview.
+pub async fn index(ctx: &mut HttpContext) -> impl IntoResponse {
+    Html("<h1>{{ name_pascal }} Controller</h1>")
+}
+
+/// Renders the {{ name_singular }} detail view.
+pub async fn show(ctx: &mut HttpContext) -> impl IntoResponse {
+    let id = ctx.param("id").unwrap_or_default();
+    Html(format!("<h1>{{ name_pascal }} Detail: {id}</h1>"))
+}
+{% endif %}
