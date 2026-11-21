@@ -47,6 +47,9 @@ pub enum Commands {
         /// Port to listen on
         #[arg(short, long)]
         port: Option<u16>,
+        /// Preview configuration without spawning child process
+        #[arg(long)]
+        dry_run: bool,
     },
     /// Display all compiled application routes in a formatted table
     Routes {
@@ -166,7 +169,11 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     match cli.command {
         Commands::New { name } => commands::new::execute_new(name).await?,
-        Commands::Dev { host, port } => commands::dev::execute_dev(host, port).await?,
+        Commands::Dev {
+            host,
+            port,
+            dry_run,
+        } => commands::dev::execute_dev(host, port, dry_run).await?,
         Commands::Routes { filter, json } => commands::routes::execute_routes(filter, json)?,
         Commands::Middleware => commands::middleware::execute_middleware()?,
         Commands::StubPublish { force } => commands::make::execute_stub_publish(force)?,

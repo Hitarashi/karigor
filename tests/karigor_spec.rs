@@ -81,10 +81,30 @@ fn test_ui_primitives() {
 #[tokio::test]
 async fn test_dev_execution() {
     assert!(
-        druto_karigor::commands::dev::execute_dev(Some("127.0.0.1".to_string()), Some(8080))
+        druto_karigor::commands::dev::execute_dev(Some("127.0.0.1".to_string()), Some(8080), true)
             .await
             .is_ok()
     );
+}
+
+#[tokio::test]
+async fn test_scaffolding_execution() {
+    let temp_name = format!(
+        "{}/test_druto_app_{}",
+        std::env::temp_dir().to_str().unwrap(),
+        std::process::id()
+    );
+
+    let result = druto_karigor::commands::new::execute_new(Some(temp_name.clone())).await;
+    assert!(result.is_ok());
+
+    let path = std::path::Path::new(&temp_name);
+    assert!(path.join("Cargo.toml").exists());
+    assert!(path.join("src/main.rs").exists());
+    assert!(path.join("src/routes/mod.rs").exists());
+    assert!(path.join("stubs/route.stub").exists());
+
+    drop(std::fs::remove_dir_all(path));
 }
 
 #[test]
