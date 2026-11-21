@@ -105,20 +105,7 @@ mod routes;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::fmt::init();
-
-    let host = std::env::var("HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
-    let port = std::env::var("PORT").unwrap_or_else(|_| "5555".to_string());
-    let addr = format!("{host}:{port}");
-
-    println!();
-    println!("  ⚡ Druto server running at http://{addr}");
-    println!("  ➜ Press Ctrl+C to terminate");
-    println!();
-
-    let router = routes::routes();
-    Server::bind(addr).serve(router).await?;
-
+    druto::ignitor::start(routes::routes()).await?;
     Ok(())
 }
 "#;

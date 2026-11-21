@@ -112,7 +112,7 @@ async fn test_scaffolding_execution() {
     let env_text = std::fs::read_to_string(path.join(".env")).unwrap();
     assert!(env_text.contains("PORT=5555"));
     let main_text = std::fs::read_to_string(path.join("src/main.rs")).unwrap();
-    assert!(main_text.contains("5555"));
+    assert!(main_text.contains("druto::ignitor::start"));
 
     drop(std::fs::remove_dir_all(path));
 }
