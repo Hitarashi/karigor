@@ -3,7 +3,8 @@
 use std::time::Duration;
 
 use colored::Colorize;
-use comfy_table::{Attribute, Cell, Color, ContentArrangement, Table, presets::UTF8_FULL};
+use comfy_table::presets::UTF8_FULL;
+pub use comfy_table::{self, Attribute, Cell, Color, ContentArrangement, Table};
 use dialoguer::{Confirm, Input, Select, theme::ColorfulTheme};
 use indicatif::{ProgressBar, ProgressStyle};
 
