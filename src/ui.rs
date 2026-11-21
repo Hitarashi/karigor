@@ -5,8 +5,8 @@ use std::time::Duration;
 use colored::Colorize;
 use comfy_table::presets::UTF8_FULL;
 pub use comfy_table::{self, Attribute, Cell, Color, ContentArrangement, Table};
-use dialoguer::{Confirm, Input, Select, theme::ColorfulTheme};
-use indicatif::{ProgressBar, ProgressStyle};
+pub use dialoguer::{self, Confirm, Input, Select, theme::ColorfulTheme};
+pub use indicatif::{self, ProgressBar, ProgressStyle};
 
 /// Formats a clean header banner with rounded corners and subtitle.
 pub fn print_banner(title: &str, subtitle: &str) {
