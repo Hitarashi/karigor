@@ -14,7 +14,7 @@ pub async fn execute_dev(
     dry_run: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let bind_host = host.unwrap_or_else(|| "127.0.0.1".to_string());
-    let bind_port = port.unwrap_or(3000);
+    let bind_port = port.unwrap_or(5555);
 
     info!(
         host = %bind_host,

@@ -85,6 +85,11 @@ async fn test_dev_execution() {
             .await
             .is_ok()
     );
+    assert!(
+        druto_karigor::commands::dev::execute_dev(None, None, true)
+            .await
+            .is_ok()
+    );
 }
 
 #[tokio::test]
@@ -103,6 +108,11 @@ async fn test_scaffolding_execution() {
     assert!(path.join("src/main.rs").exists());
     assert!(path.join("src/routes/mod.rs").exists());
     assert!(path.join("stubs/route.stub").exists());
+
+    let env_text = std::fs::read_to_string(path.join(".env")).unwrap();
+    assert!(env_text.contains("PORT=5555"));
+    let main_text = std::fs::read_to_string(path.join("src/main.rs")).unwrap();
+    assert!(main_text.contains("5555"));
 
     drop(std::fs::remove_dir_all(path));
 }

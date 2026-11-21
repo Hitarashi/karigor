@@ -20,7 +20,7 @@ pub fn execute_doctor() -> Result<(), Box<dyn std::error::Error>> {
     ui::print_success("Nightly formatter: cargo +nightly fmt ready");
 
     ui::print_section("Application Network & Port Health");
-    ui::print_success("Port 3000 (HTTP development server): Available");
+    ui::print_success("Port 5555 (HTTP development server): Available");
     ui::print_info("Loopback interface: 127.0.0.1 bound and ready");
 
     ui::print_section("Environment & Security Configuration");

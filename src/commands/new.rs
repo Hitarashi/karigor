@@ -108,7 +108,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
 
     let host = std::env::var("HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
-    let port = std::env::var("PORT").unwrap_or_else(|_| "3000".to_string());
+    let port = std::env::var("PORT").unwrap_or_else(|_| "5555".to_string());
     let addr = format!("{host}:{port}");
 
     println!();
@@ -158,7 +158,7 @@ pub fn routes() -> Router {
     stubs::publish_stubs(&project_dir.join("stubs"), true)?;
 
     spinner.set_message("Generating environment files (.env, .env.example)...");
-    let env_content = "HOST=127.0.0.1\nPORT=3000\nAPP_ENV=development\n";
+    let env_content = "HOST=127.0.0.1\nPORT=5555\nAPP_ENV=development\n";
     fs::write(project_dir.join(".env"), env_content)?;
     fs::write(project_dir.join(".env.example"), env_content)?;
 
