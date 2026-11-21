@@ -1,197 +1,261 @@
-//! Specification test suite for Karigor CLI.
+use std::sync::atomic::{AtomicBool, Ordering};
 
-use druto_karigor::{
-    commands::{
-        doctor::execute_doctor,
-        make::{
-            execute_make_command, execute_make_controller, execute_make_middleware,
-            execute_make_route, execute_stub_publish,
-        },
-        middleware::execute_middleware,
-        routes::execute_routes,
-    },
-    injector::{inject_controller_module, inject_route_module},
-    normalize_args,
-    stubs::{get_stub, render_stub},
-    ui::{
-        create_table, format_http_method, print_banner, print_error, print_info, print_section,
-        print_success, print_warn,
-    },
-};
+use karigor::prelude::*;
+use serde_json::json;
 
-#[test]
-fn test_normalize_args_direct_invocation() {
-    let args = vec!["karigor", "routes"];
-    let normalized = normalize_args(args);
-    assert_eq!(normalized, vec!["karigor", "routes"]);
+struct GreetCommand;
+
+impl Command for GreetCommand {
+    fn name(&self) -> &'static str {
+        "greet"
+    }
+
+    fn description(&self) -> &'static str {
+        "Prints a personalized greeting"
+    }
+
+    fn aliases(&self) -> &'static [&'static str] {
+        &["hello", "hi"]
+    }
+
+    fn arguments(&self) -> Vec<Argument> {
+        vec![
+            Argument::required("name", "The person to greet"),
+            Argument::optional("title", "Honorific title", Some("Developer".to_string())),
+        ]
+    }
+
+    fn flags(&self) -> Vec<Flag> {
+        vec![
+            Flag::boolean("loud", Some('l'), "Print in uppercase"),
+            Flag::string(
+                "prefix",
+                Some('p'),
+                "Greeting prefix",
+                Some("Hello".to_string()),
+            ),
+        ]
+    }
+
+    fn run<'a>(&'a self, ctx: &'a mut Context) -> CommandFuture<'a> {
+        Box::pin(async move {
+            let name = ctx.arg("name").unwrap();
+            let title = ctx.arg("title").unwrap();
+            let loud = ctx.flag_bool("loud");
+            let prefix = ctx.flag_str("prefix").unwrap();
+
+            let message = format!("{prefix}, {title} {name}!");
+            if loud {
+                ctx.ui.success(&message.to_uppercase());
+            } else {
+                ctx.ui.success(&message);
+            }
+
+            Ok(())
+        })
+    }
 }
 
-#[test]
-fn test_normalize_args_cargo_subcommand() {
-    let args = vec!["cargo-karigor", "karigor", "routes"];
-    let normalized = normalize_args(args);
-    assert_eq!(normalized, vec!["cargo-karigor", "routes"]);
-}
+static MAKE_ROUTE_EXECUTED: AtomicBool = AtomicBool::new(false);
 
-#[test]
-fn test_normalize_args_colon_subcommands() {
-    let args = vec!["karigor", "make:controller", "User", "--api"];
-    let normalized = normalize_args(args);
-    assert_eq!(
-        normalized,
-        vec!["karigor", "make", "controller", "User", "--api"]
-    );
+struct MakeRouteCommand;
 
-    let args_mw = vec!["cargo-karigor", "karigor", "make:middleware", "Auth"];
-    let normalized_mw = normalize_args(args_mw);
-    assert_eq!(
-        normalized_mw,
-        vec!["cargo-karigor", "make", "middleware", "Auth"]
-    );
-}
+impl Command for MakeRouteCommand {
+    fn name(&self) -> &'static str {
+        "make:route"
+    }
 
-#[test]
-fn test_ui_http_method_formatting() {
-    assert!(format_http_method("GET").contains("GET"));
-    assert!(format_http_method("POST").contains("POST"));
-    assert!(format_http_method("PUT").contains("PUT"));
-    assert!(format_http_method("PATCH").contains("PATCH"));
-    assert!(format_http_method("DELETE").contains("DELETE"));
-    assert!(format_http_method("HEAD").contains("HEAD"));
-    assert!(format_http_method("OPTIONS").contains("OPTIONS"));
-    assert!(format_http_method("CUSTOM").contains("CUSTOM"));
-}
+    fn description(&self) -> &'static str {
+        "Generates a new route handler"
+    }
 
-#[test]
-fn test_ui_table_creation() {
-    let mut table = create_table(&["Col1", "Col2"]);
-    assert_eq!(table.column_count(), 2);
-}
+    fn arguments(&self) -> Vec<Argument> {
+        vec![Argument::required("name", "Route module name")]
+    }
 
-#[test]
-fn test_ui_primitives() {
-    print_banner("Test Title", "Test Subtitle");
-    print_section("Test Section");
-    print_success("Operation succeeded");
-    print_info("Information note");
-    print_warn("Warning notification");
-    print_error("Error notification");
+    fn flags(&self) -> Vec<Flag> {
+        vec![Flag::boolean(
+            "controller",
+            Some('c'),
+            "Generate paired controller",
+        )]
+    }
+
+    fn run<'a>(&'a self, ctx: &'a mut Context) -> CommandFuture<'a> {
+        Box::pin(async move {
+            assert_eq!(ctx.arg("name"), Some("user"));
+            assert!(ctx.flag_bool("controller"));
+            MAKE_ROUTE_EXECUTED.store(true, Ordering::SeqCst);
+            Ok(())
+        })
+    }
 }
 
 #[tokio::test]
-async fn test_dev_execution() {
-    assert!(
-        druto_karigor::commands::dev::execute_dev(Some("127.0.0.1".to_string()), Some(8080), true)
-            .await
-            .is_ok()
-    );
-    assert!(
-        druto_karigor::commands::dev::execute_dev(None, None, true)
-            .await
-            .is_ok()
-    );
-}
+async fn test_kernel_command_execution() {
+    let kernel = Kernel::new("test-cli", "CLI Test Suite")
+        .version("1.0.0")
+        .register(GreetCommand);
 
-#[tokio::test]
-async fn test_scaffolding_execution() {
-    let temp_name = format!(
-        "{}/test_druto_app_{}",
-        std::env::temp_dir().to_str().unwrap(),
-        std::process::id()
-    );
+    let args = vec![
+        "test-cli".to_string(),
+        "greet".to_string(),
+        "Sayeed".to_string(),
+        "--loud".to_string(),
+        "--prefix=Welcome".to_string(),
+    ];
 
-    let result = druto_karigor::commands::new::execute_new(Some(temp_name.clone())).await;
+    let result = kernel.handle(args).await;
     assert!(result.is_ok());
+}
 
-    let path = std::path::Path::new(&temp_name);
-    assert!(path.join("Cargo.toml").exists());
-    assert!(path.join("src/main.rs").exists());
-    assert!(path.join("src/routes/mod.rs").exists());
-    assert!(!path.join("stubs").exists());
+#[tokio::test]
+async fn test_kernel_alias_resolution() {
+    let kernel = Kernel::new("test-cli", "CLI Test Suite").register(GreetCommand);
 
-    let env_text = std::fs::read_to_string(path.join(".env")).unwrap();
-    assert!(env_text.contains("PORT=5555"));
-    let main_text = std::fs::read_to_string(path.join("src/main.rs")).unwrap();
-    assert!(main_text.contains("druto::ignitor::start"));
+    let args = vec![
+        "test-cli".to_string(),
+        "hello".to_string(),
+        "Sayeed".to_string(),
+    ];
 
-    drop(std::fs::remove_dir_all(path));
+    let result = kernel.handle(args).await;
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn test_kernel_colon_subcommand_normalization() {
+    MAKE_ROUTE_EXECUTED.store(false, Ordering::SeqCst);
+
+    let kernel = Kernel::new("test-cli", "CLI Test Suite")
+        .group("make", "Scaffolding commands")
+        .register(MakeRouteCommand);
+
+    // Test colon syntax
+    let args_colon = vec![
+        "test-cli".to_string(),
+        "make:route".to_string(),
+        "user".to_string(),
+        "--controller".to_string(),
+    ];
+    assert!(kernel.handle(args_colon).await.is_ok());
+    assert!(MAKE_ROUTE_EXECUTED.load(Ordering::SeqCst));
+
+    MAKE_ROUTE_EXECUTED.store(false, Ordering::SeqCst);
+
+    // Test space-separated subcommands (e.g. `make route`)
+    let args_space = vec![
+        "test-cli".to_string(),
+        "make".to_string(),
+        "route".to_string(),
+        "user".to_string(),
+        "-c".to_string(),
+    ];
+    assert!(kernel.handle(args_space).await.is_ok());
+    assert!(MAKE_ROUTE_EXECUTED.load(Ordering::SeqCst));
+}
+
+#[tokio::test]
+async fn test_kernel_fuzzy_suggestion() {
+    let kernel = Kernel::new("test-cli", "CLI Test Suite").register(GreetCommand);
+
+    let args = vec!["test-cli".to_string(), "gret".to_string()];
+
+    let result = kernel.handle(args).await;
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    let err_msg = err.to_string();
+    assert!(err_msg.contains("Unknown command `gret`"));
+    assert!(err_msg.contains("Did you mean `greet`?"));
+}
+
+#[tokio::test]
+async fn test_kernel_missing_required_argument() {
+    let kernel = Kernel::new("test-cli", "CLI Test Suite").register(GreetCommand);
+
+    let args = vec!["test-cli".to_string(), "greet".to_string()];
+
+    let result = kernel.handle(args).await;
+    assert!(result.is_err());
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("Missing required argument `name`")
+    );
+}
+
+#[tokio::test]
+async fn test_kernel_help_and_version() {
+    let kernel = Kernel::new("test-cli", "CLI Test Suite")
+        .version("2.5.0")
+        .register(GreetCommand);
+
+    assert!(
+        kernel
+            .handle(vec!["test-cli".to_string(), "--help".to_string()])
+            .await
+            .is_ok()
+    );
+    assert!(
+        kernel
+            .handle(vec!["test-cli".to_string(), "--version".to_string()])
+            .await
+            .is_ok()
+    );
+    assert!(
+        kernel
+            .handle(vec![
+                "test-cli".to_string(),
+                "greet".to_string(),
+                "--help".to_string()
+            ])
+            .await
+            .is_ok()
+    );
 }
 
 #[test]
-fn test_routes_execution() {
-    assert!(execute_routes(None, false).is_ok());
-    assert!(execute_routes(Some("auth".to_string()), false).is_ok());
-    assert!(execute_routes(None, true).is_ok());
-}
-
-#[test]
-fn test_middleware_execution() {
-    assert!(execute_middleware().is_ok());
-}
-
-#[test]
-fn test_make_commands_execution() {
-    assert!(execute_make_route("Users", false, true).is_ok());
-    assert!(execute_make_route("Orders", true, true).is_ok());
-    assert!(execute_make_controller("Users", true, true).is_ok());
-    assert!(execute_make_controller("Categories", false, true).is_ok());
-    assert!(execute_make_middleware("Audit", true).is_ok());
-    assert!(execute_make_command("SyncDb", true).is_ok());
-    assert!(execute_stub_publish(true).is_ok());
-    drop(std::fs::remove_dir_all("stubs"));
-}
-
-#[test]
-fn test_stubs_rendering_and_borno_inflections() {
-    let stub = get_stub("route.stub");
-    assert!(!stub.is_empty());
-
-    let context = serde_json::json!({
-        "name_snake": "category",
-        "has_controller": true,
+fn test_template_rendering_with_inflections() {
+    let template = "Hello {{ name | capitalize }}! Snake: {{ name_raw | snake_case }} Plural: {{ entity | plural }}";
+    let context = json!({
+        "name": "developer",
+        "name_raw": "UserProfile",
+        "entity": "category",
     });
-    let rendered = render_stub(&stub, &context).expect("failed to render stub");
-    assert!(rendered.contains("use crate::controllers::category;"));
-    assert!(rendered.contains("router.get(\"/\", category::index);"));
+
+    let rendered = karigor::template::render(template, &context).unwrap();
+    assert!(rendered.contains("Hello Developer!"));
+    assert!(rendered.contains("Snake: user_profile"));
+    assert!(rendered.contains("Plural: categories"));
 }
 
 #[test]
-fn test_stub_publish_explicit() {
-    let temp_dir = std::env::temp_dir().join(format!("test_stubs_{}", std::process::id()));
-    let outcomes = druto_karigor::stubs::publish_stubs(&temp_dir, true).unwrap();
-    assert_eq!(outcomes.len(), 4);
-    assert!(temp_dir.join("route.stub").exists());
-    assert!(temp_dir.join("controller.stub").exists());
-    assert!(temp_dir.join("middleware.stub").exists());
-    assert!(temp_dir.join("command.stub").exists());
-    drop(std::fs::remove_dir_all(&temp_dir));
+fn test_ui_table_and_method_formatting() {
+    let ui = Ui::new().quiet(true);
+    let mut table = ui.table(&["Method", "Route"]);
+    table.add_row(vec![
+        karigor::ui::cell_http_method("GET"),
+        comfy_table::Cell::new("/users"),
+    ]);
+
+    let output = table.to_string();
+    assert!(output.contains("Method"));
+    assert!(output.contains("/users"));
+
+    assert!(karigor::ui::format_http_method("GET").contains("GET"));
 }
 
 #[test]
-fn test_smart_injector_idempotence() {
-    let temp_dir = std::env::temp_dir().join(format!("karigor_test_{}", std::process::id()));
-    let routes_mod = temp_dir.join("routes").join("mod.rs");
-    let controllers_mod = temp_dir.join("controllers").join("mod.rs");
+fn test_template_publish_files() {
+    let temp_dir =
+        std::env::temp_dir().join(format!("karigor_publish_test_{}", std::process::id()));
+    let files = &[("test1.txt", "Content 1"), ("test2.txt", "Content 2")];
 
-    let outcome1 = inject_route_module(&routes_mod, "users").expect("first route injection");
-    assert!(outcome1.module_injected);
-    assert!(outcome1.route_mounted);
-
-    // Second injection must be idempotent (no duplicates)
-    let outcome2 = inject_route_module(&routes_mod, "users").expect("second route injection");
-    assert!(!outcome2.module_injected);
-    assert!(!outcome2.route_mounted);
-
-    // Controllers injection
-    let ctrl1 = inject_controller_module(&controllers_mod, "users").expect("first ctrl injection");
-    assert!(ctrl1);
-    let ctrl2 = inject_controller_module(&controllers_mod, "users").expect("second ctrl injection");
-    assert!(!ctrl2);
+    let outcomes = karigor::template::publish_files(&temp_dir, files, true).unwrap();
+    assert_eq!(outcomes.len(), 2);
+    assert!(temp_dir.join("test1.txt").exists());
+    assert!(temp_dir.join("test2.txt").exists());
 
     drop(std::fs::remove_dir_all(temp_dir));
-}
-
-#[test]
-fn test_doctor_execution() {
-    assert!(execute_doctor().is_ok());
 }

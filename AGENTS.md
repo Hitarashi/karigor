@@ -1,29 +1,32 @@
-# `karigor` Agent Instructions
+# Comments
 
-## Scope
+Comment the why, and only when the code cannot state it: a constraint from
+outside the file, a deliberate omission, or a decision whose alternative a
+reader would otherwise pick.
 
-This crate owns the command-line interface, interactive project scaffolding, code generation,
-development server supervisor, route and middleware inspection, and diagnostic tooling for the Druto ecosystem.
+If a competent reader could infer it from the code, the code already says it.
+Rustdoc (`///`, `//!`) is always fine — it documents the public surface.
 
-## Design Rules
+# Code Style and Lints
 
-1. **Terminal Aesthetics & UX**:
-   - Adhere to the Hybrid Modern design language: clean rounded borders (`╭───╮`), bold colored badges for HTTP methods, and clean unicode status symbols (`✔`, `➜`, `✖`, `⚠`).
-   - Terminal styling must degrade gracefully when colors or unicode are not supported (e.g. `NO_COLOR=1` or non-interactive TTY).
-   - Use `tracing` for all internal operational logging, debug channels, and structured telemetry.
-   - Command output must be responsive, clear, and informative.
+- Follow [Google's Rust Style Guide](https://google.github.io/styleguide/rustguide.md).
+- Do not suppress Clippy warnings inline (`#[allow(...)]` or `#[expect(...)]`) at all. Resolve the warning or
+  restructure the code instead.
+- Avoid using leading underscores (`_`) on identifiers, variables, parameters, or struct fields.
+- Code formatting must be verified via `cargo +nightly fmt --check`.
+- Always check local repo `.md` files whether ignored or not.
 
-2. **Command Dispatch & Ergonomics**:
-   - Provide dual binary entrypoints: `cargo-karigor` (invoked via `cargo karigor <cmd>`) and `karigor` (invoked directly).
-   - Handle both single and multi-word command syntax (e.g. `make:controller` and `make controller`).
-   - Support global flags: `--verbose`, `--quiet`, `--json`, `--no-color`.
+# Framework-Agnostic Documentation & Codebase
 
-3. **Code Quality & Style**:
-   - Follow Google's Rust Style Guide.
-   - Zero inline Clippy suppressions (`#[allow(...)]` or `#[expect(...)]`). Resolve warnings or restructure code instead.
-   - Avoid leading underscores (`_`) on identifiers, parameters, and fields.
-   - Verify formatting with `cargo +nightly fmt --check`.
+- Do not mention any specific web frameworks in rustdocs, codebase comments, identifiers, or error messages.
+- Reference only official standards, terminal conventions, and Rust types.
 
-4. **Framework-Agnostic Documentation**:
-   - Reference only RFCs, W3C standards, official specifications, and Druto types.
-   - Do not mention other web frameworks in rustdocs, comments, identifiers, or error messages.
+# Scope & Responsibilities
+
+`karigor` is the framework-agnostic CLI toolkit and terminal UI engine under `Hitarashi/karigor`.
+Its responsibilities include:
+1. Command registry, lifecycle management, and execution kernel.
+2. Argument parsing, flag validation, and colon-delimited subcommand normalization.
+3. Terminal UI presentation (banners, rounded tables, status bullets, badges, spinners).
+4. Interactive prompts (text input, confirmations, selection menus).
+5. Template rendering and file publication utilities.

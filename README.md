@@ -1,49 +1,67 @@
-# druto-karigor
+# Karigor (`karigor`)
 
-[![Crates.io](https://img.shields.io/crates/v/druto-karigor.svg)](https://crates.io/crates/druto-karigor)
-[![Documentation](https://docs.rs/druto-karigor/badge.svg)](https://docs.rs/druto-karigor)
-[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE-MIT)
+Framework-agnostic, developer-friendly CLI application builder and terminal UI toolkit for Rust.
 
-Craftsman CLI, interactive scaffolding, dev server, and code generators for Druto.
+## Features
 
-`karigor` (কারিগর — the craftsman / artisan) is the central command-line engine for the Druto web framework. It manages the entire application lifecycle—from project creation and component scaffolding to dev server supervision, route introspection, and diagnostics.
+- **Declarative Kernel Dispatcher**: Register commands and groups with support for nested/colon subcommands (`make:route` ↔ `make route`).
+- **Fuzzy Command Matching**: Automatically suggests closest matching commands on typo inputs with Levenshtein distance.
+- **Beautiful Terminal UI**: Pre-styled rounded tables, colored banners, section badges, and status logs.
+- **Interactive Prompts**: Text input with defaults, yes/no confirmation prompts, and single-selection lists powered by `dialoguer`.
+- **Steady Progress Indicators**: Elegant terminal spinners and progress bars powered by `indicatif`.
+- **Template Code Generator**: Built-in template rendering and file ejection powered by `minijinja`.
 
----
+## Quick Start
 
-## Installation
+```rust
+use karigor::prelude::*;
 
-```bash
-cargo install druto-karigor
+struct BuildCommand;
+
+impl Command for BuildCommand {
+    fn name(&self) -> &'static str {
+        "build"
+    }
+
+    fn description(&self) -> &'static str {
+        "Compile and build project artifacts"
+    }
+
+    fn flags(&self) -> Vec<Flag> {
+        vec![Flag::boolean("release", Some('r'), "Build in release mode")]
+    }
+
+    fn run<'a>(&'a self, ctx: &'a mut Context) -> CommandFuture<'a> {
+        Box::pin(async move {
+            let release = ctx.flag_bool("release");
+            ctx.ui.section("Build Pipeline");
+            if release {
+                ctx.ui.info("Compiling with release optimizations...");
+            } else {
+                ctx.ui.info("Compiling in debug mode...");
+            }
+            ctx.ui.success("Artifacts generated successfully!");
+            Ok(())
+        })
+    }
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let kernel = Kernel::new("my-cli", "Developer Tool Suite")
+        .version("0.1.0")
+        .register(BuildCommand);
+
+    kernel.handle_env().await?;
+    Ok(())
+}
 ```
-
-This installs both `karigor` and `cargo-karigor`. You can invoke commands either as:
-
-```bash
-cargo karigor <command>
-# or
-karigor <command>
-```
-
----
-
-## Commands
-
-- **`karigor new <name>`**: Launch the interactive project scaffolding wizard.
-- **`karigor dev`**: Run the development server with live reload and interactive inspection shortcuts.
-- **`karigor routes`**: Inspect all compiled application routes in a formatted table with methods and middlewares.
-- **`karigor middleware`**: Visualize the middleware onion pipeline.
-- **`karigor make:controller <name>`**: Scaffold a new route controller.
-- **`karigor make:middleware <name>`**: Scaffold a custom onion middleware.
-- **`karigor make:command <name>`**: Scaffold a custom task or command.
-- **`karigor doctor`**: Run system, port, environment, and connectivity diagnostics.
-
----
 
 ## License
 
 Licensed under either of:
 
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
-- MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
+- MIT license ([LICENSE-MIT](LICENSE-MIT))
 
 at your option.

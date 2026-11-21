@@ -1,27 +1,17 @@
 [package]
-name = "druto-karigor"
+name = "karigor"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 rust-version = "1.95"
-default-run = "karigor"
-description = "Craftsman CLI, interactive scaffolding, dev server, and code generators for Druto"
-repository = "https://github.com/druto-rs/karigor"
+description = "Framework-agnostic, developer-friendly CLI application builder and terminal UI toolkit for Rust"
+repository = "https://github.com/Hitarashi/karigor"
 readme = "README.md"
-keywords = ["karigor", "cli", "druto", "artisan", "scaffolding"]
-categories = ["command-line-utilities", "development-tools"]
-
-[[bin]]
-name = "karigor"
-path = "src/bin/karigor.rs"
-
-[[bin]]
-name = "cargo-karigor"
-path = "src/bin/cargo_karigor.rs"
+keywords = ["cli", "terminal", "console", "ui", "framework"]
+categories = ["command-line-interface", "development-tools"]
 
 [dependencies]
-borno = { git = "https://github.com/Hitarashi/borno" }
-clap = { version = "4.6.9", features = ["derive", "env", "color"] }
+borno = { git = "https://github.com/Hitarashi/borno.git", branch = "main" }
 colored = "3.1.1"
 comfy-table = "8.0.1"
 dialoguer = { version = "0.12.0", default-features = false, features = ["fuzzy-select"] }
@@ -29,6 +19,6 @@ indicatif = "0.18.6"
 minijinja = { version = "3.1.0", features = ["serde"] }
 serde = { version = "1.0.229", default-features = false, features = ["derive", "alloc"] }
 serde_json = "1.0.154"
-tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "time"] }
-tracing = "0.1.44"
-tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt"] }
+
+[dev-dependencies]
+tokio = { version = "1.54.1", features = ["full"] }
