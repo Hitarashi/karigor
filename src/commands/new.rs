@@ -34,7 +34,7 @@ pub async fn execute_new(initial_name: Option<String>) -> Result<(), Box<dyn std
 
     let preset_index = Select::with_theme(&theme)
         .with_prompt("Choose architecture preset")
-        .items(&presets)
+        .items(presets)
         .default(0)
         .interact()?;
 
@@ -46,7 +46,7 @@ pub async fn execute_new(initial_name: Option<String>) -> Result<(), Box<dyn std
 
     let db_index = Select::with_theme(&theme)
         .with_prompt("Primary database engine")
-        .items(&database_options)
+        .items(database_options)
         .default(0)
         .interact()?;
 
@@ -57,7 +57,7 @@ pub async fn execute_new(initial_name: Option<String>) -> Result<(), Box<dyn std
 
     let session_index = Select::with_theme(&theme)
         .with_prompt("Cache & Session storage driver")
-        .items(&session_cache_options)
+        .items(session_cache_options)
         .default(0)
         .interact()?;
 

@@ -1,10 +1,7 @@
 //! Terminal UI design system and presentation helpers for Karigor.
 
 use colored::Colorize;
-use comfy_table::{
-    Attribute, Cell, Color, ContentArrangement, Table, modifiers::UTF8_ROUND_CORNERS,
-    presets::UTF8_FULL,
-};
+use comfy_table::{Attribute, Cell, Color, ContentArrangement, Table, presets::UTF8_FULL};
 
 /// Formats a clean header banner with rounded corners and subtitle.
 pub fn print_banner(title: &str, subtitle: &str) {
@@ -93,8 +90,7 @@ pub fn format_http_method(method: &str) -> String {
 pub fn create_table(headers: &[&str]) -> Table {
     let mut table = Table::new();
     table
-        .load_preset(UTF8_FULL)
-        .apply_modifier(UTF8_ROUND_CORNERS)
+        .load_style(UTF8_FULL.with_rounded_corners())
         .set_content_arrangement(ContentArrangement::Disabled);
 
     let header_cells = headers.iter().map(|header| {
