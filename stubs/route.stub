@@ -14,24 +14,25 @@ pub fn routes() -> Router {
 {% else %}
 pub fn routes() -> Router {
     let mut router = Router::new();
-    router.get("/", index);
-    router.get("/:id", show);
+    router.get(
+        "/",
+        from_handler(|ctx| {
+            Box::pin(async move {
+                ctx.response.text("Route: {{ name_snake }}::index\n");
+                Ok(())
+            })
+        }),
+    );
+    router.get(
+        "/:id",
+        from_handler(|ctx| {
+            Box::pin(async move {
+                let id = ctx.request.param("id").unwrap_or_default();
+                ctx.response.text(format!("Route: {{ name_snake }}::show ({id})\n"));
+                Ok(())
+            })
+        }),
+    );
     router
-}
-
-async fn index(ctx: &mut HttpContext) -> impl IntoResponse {
-    Json(serde_json::json!({
-        "status": "ok",
-        "route": "{{ name_snake }}::index"
-    }))
-}
-
-async fn show(ctx: &mut HttpContext) -> impl IntoResponse {
-    let id = ctx.param("id").unwrap_or_default();
-    Json(serde_json::json!({
-        "status": "ok",
-        "id": id,
-        "route": "{{ name_snake }}::show"
-    }))
 }
 {% endif %}
