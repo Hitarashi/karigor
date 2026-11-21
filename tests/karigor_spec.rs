@@ -3,7 +3,10 @@
 use druto_karigor::{
     commands::{
         doctor::execute_doctor,
-        make::{execute_make_command, execute_make_controller, execute_make_middleware},
+        make::{
+            execute_make_command, execute_make_controller, execute_make_middleware,
+            execute_make_route,
+        },
         middleware::execute_middleware,
         routes::execute_routes,
     },
@@ -96,6 +99,8 @@ fn test_middleware_execution() {
 
 #[test]
 fn test_make_commands_execution() {
+    assert!(execute_make_route("Users", false).is_ok());
+    assert!(execute_make_route("Orders", true).is_ok());
     assert!(execute_make_controller("Users", true).is_ok());
     assert!(execute_make_middleware("Audit").is_ok());
     assert!(execute_make_command("SyncDb").is_ok());

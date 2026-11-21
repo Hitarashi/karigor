@@ -67,6 +67,14 @@ pub enum Commands {
 /// Component code generators.
 #[derive(Subcommand, Debug)]
 pub enum MakeCommands {
+    /// Scaffold a modular route file and mount it
+    Route {
+        /// Name of the route module
+        name: String,
+        /// Generate a paired controller delegating handlers to it
+        #[arg(short, long)]
+        controller: bool,
+    },
     /// Scaffold a new route controller
     Controller {
         /// Name of the controller
@@ -140,6 +148,9 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Dev { host, port } => commands::dev::execute_dev(host, port).await?,
         Commands::Routes { filter, json } => commands::routes::execute_routes(filter, json)?,
         Commands::Middleware => commands::middleware::execute_middleware()?,
+        Commands::Make(MakeCommands::Route { name, controller }) => {
+            commands::make::execute_make_route(&name, controller)?
+        }
         Commands::Make(MakeCommands::Controller { name, api }) => {
             commands::make::execute_make_controller(&name, api)?
         }
