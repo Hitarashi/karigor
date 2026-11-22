@@ -49,7 +49,7 @@ impl fmt::Display for KarigorError {
 impl std::error::Error for KarigorError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::Execution(err) => err.source(),
+            Self::Execution(err) => Some(err.as_ref()),
             Self::Template(err) => Some(err),
             Self::Io(err) => Some(err),
             _ => None,

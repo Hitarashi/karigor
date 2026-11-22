@@ -1,68 +1,71 @@
 //! Terminal UI design system, presentation primitives, and interactive prompts for Karigor.
 
-use std::time::Duration;
+pub mod action;
+pub mod ansi;
+pub mod instruction;
+pub mod key_value;
+pub mod prompt;
+pub mod spinner;
+pub mod steps;
+pub mod table;
+pub mod writer;
 
-use colored::Colorize;
-use comfy_table::presets::UTF8_FULL;
-pub use comfy_table::{self, Attribute, Cell, Color, ContentArrangement, Table};
-pub use dialoguer::{self, Confirm, Input, Select, theme::ColorfulTheme};
-pub use indicatif::{self, ProgressBar, ProgressStyle};
+use std::sync::{Arc, Mutex};
+
+pub use action::Action;
+pub use ansi::{
+    Color, Colorize, ColorizeExt, StyledText, is_color_enabled, reset_color_override,
+    set_color_enabled, strip_ansi, visible_width,
+};
+pub use instruction::Instruction;
+pub use key_value::DefinitionList;
+pub use prompt::{
+    MockPromptBackend, PromptBackend, PromptHandler, TerminalPromptBackend, is_non_interactive,
+    prompt_confirm_stream, prompt_input_stream, prompt_select_stream, set_non_interactive,
+};
+pub use spinner::{ProgressBar, ProgressStyle};
+pub use steps::Steps;
+pub use table::{Alignment, Attribute, Cell, ContentArrangement, Table, TablePreset, presets};
+pub use writer::UiWriter;
 
 /// Formats a clean header banner with rounded corners and subtitle.
 pub fn print_banner(title: &str, subtitle: &str) {
-    println!();
-    println!(
-        "{}",
-        " ╭──────────────────────────────────────────────────────────╮".cyan()
-    );
-    println!(
-        " {}  {} {}",
-        "│".cyan(),
-        format!("⚡ {title}").bold().white(),
-        " ".repeat(53_usize.saturating_sub(title.len() + 3))
-    );
-    if !subtitle.is_empty() {
-        println!(
-            " {}  {} {}",
-            "│".cyan(),
-            subtitle.dimmed(),
-            " ".repeat(55_usize.saturating_sub(subtitle.len()))
-        );
-    }
-    println!(
-        "{}",
-        " ╰──────────────────────────────────────────────────────────╯".cyan()
-    );
-    println!();
+    let ui = Ui::new();
+    ui.banner(title, subtitle);
 }
 
 /// Prints a section header with an indicator icon.
 pub fn print_section(title: &str) {
-    println!();
-    println!("{} {}", "◆".cyan(), title.bold().white());
+    let ui = Ui::new();
+    ui.section(title);
 }
 
 /// Prints a success status message.
 pub fn print_success(message: &str) {
-    println!("  {} {}", "✔".green().bold(), message);
+    let ui = Ui::new();
+    ui.success(message);
 }
 
 /// Prints an informational note.
 pub fn print_info(message: &str) {
-    println!("  {} {}", "➜".blue().bold(), message);
+    let ui = Ui::new();
+    ui.info(message);
 }
 
 /// Prints a warning notification.
 pub fn print_warn(message: &str) {
-    println!("  {} {}", "⚠".yellow().bold(), message);
+    let ui = Ui::new();
+    ui.warn(message);
 }
 
-/// Prints an error notification to standard error.
+/// Prints an error notification.
 pub fn print_error(message: &str) {
-    eprintln!("  {} {}", "✖".red().bold(), message);
+    let ui = Ui::new();
+    ui.error(message);
 }
 
 /// Formats an HTTP method with standardized badge coloring as a styled table cell.
+#[must_use]
 pub fn cell_http_method(method: &str) -> Cell {
     let cell = Cell::new(format!(" {method} ")).add_attribute(Attribute::Bold);
     match method.to_uppercase().as_str() {
@@ -72,12 +75,13 @@ pub fn cell_http_method(method: &str) -> Cell {
         "PATCH" => cell.fg(Color::Black).bg(Color::Magenta),
         "DELETE" => cell.fg(Color::White).bg(Color::Red),
         "HEAD" => cell.fg(Color::Black).bg(Color::Cyan),
-        "OPTIONS" => cell.fg(Color::White).bg(Color::DarkGrey),
+        "OPTIONS" => cell.fg(Color::White).bg(Color::BrightBlack),
         _ => cell.fg(Color::Black).bg(Color::White),
     }
 }
 
 /// Formats an HTTP method with standardized badge coloring for standalone strings.
+#[must_use]
 pub fn format_http_method(method: &str) -> String {
     match method.to_uppercase().as_str() {
         "GET" => " GET ".black().on_green().bold().to_string(),
@@ -95,12 +99,10 @@ pub fn format_http_method(method: &str) -> String {
 #[must_use]
 pub fn create_table(headers: &[&str]) -> Table {
     let mut table = Table::new();
-    table
-        .load_style(UTF8_FULL.with_rounded_corners())
-        .set_content_arrangement(ContentArrangement::Disabled);
+    table.load_style(TablePreset::Rounded);
 
     let header_cells = headers.iter().map(|header| {
-        Cell::new(header)
+        Cell::new(*header)
             .add_attribute(Attribute::Bold)
             .fg(Color::Cyan)
     });
@@ -113,38 +115,18 @@ pub fn create_table(headers: &[&str]) -> Table {
 #[must_use]
 pub fn create_spinner(message: &str) -> ProgressBar {
     let spinner = ProgressBar::new_spinner();
-    spinner.set_style(
-        ProgressStyle::default_spinner()
-            .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏ ")
-            .template("{spinner:.cyan} {msg}")
-            .expect("valid template"),
-    );
-    spinner.set_message(message.to_string());
-    spinner.enable_steady_tick(Duration::from_millis(80));
+    spinner.set_message(message);
     spinner
 }
 
 /// Prompts the user for a text value with an optional default.
 pub fn prompt_input(prompt: &str, default: Option<&str>) -> Result<String, std::io::Error> {
-    let theme = ColorfulTheme::default();
-    let input = Input::with_theme(&theme);
-    let mut builder = input.with_prompt(prompt);
-    if let Some(def) = default {
-        builder = builder.default(def.to_string());
-    }
-    builder
-        .interact_text()
-        .map_err(|err| std::io::Error::other(err.to_string()))
+    PromptHandler::terminal().input(prompt, default)
 }
 
 /// Prompts the user with a yes/no confirmation prompt.
 pub fn prompt_confirm(prompt: &str, default: bool) -> Result<bool, std::io::Error> {
-    let theme = ColorfulTheme::default();
-    Confirm::with_theme(&theme)
-        .with_prompt(prompt)
-        .default(default)
-        .interact()
-        .map_err(|err| std::io::Error::other(err.to_string()))
+    PromptHandler::terminal().confirm(prompt, default)
 }
 
 /// Prompts the user to select one item from a list.
@@ -153,26 +135,56 @@ pub fn prompt_select<T: ToString + std::fmt::Display>(
     items: &[T],
     default: usize,
 ) -> Result<usize, std::io::Error> {
-    let theme = ColorfulTheme::default();
-    Select::with_theme(&theme)
-        .with_prompt(prompt)
-        .items(items)
-        .default(default)
-        .interact()
-        .map_err(|err| std::io::Error::other(err.to_string()))
+    PromptHandler::terminal().select(prompt, items, default)
 }
 
 /// Interactive terminal UI manager.
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct Ui {
     quiet: bool,
+    writer: UiWriter,
+    prompts: PromptHandler,
+    captured_buffer: Option<Arc<Mutex<Vec<u8>>>>,
+}
+
+impl std::fmt::Debug for Ui {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("Ui")
+            .field("quiet", &self.quiet)
+            .finish()
+    }
 }
 
 impl Ui {
-    /// Creates a new `Ui` instance with standard verbosity.
+    /// Creates a new `Ui` instance with standard verbosity and console output.
     #[must_use]
     pub fn new() -> Self {
-        Self { quiet: false }
+        Self {
+            quiet: false,
+            writer: UiWriter::Console,
+            prompts: PromptHandler::terminal(),
+            captured_buffer: None,
+        }
+    }
+
+    /// Creates an in-memory capturing `Ui` instance for automated tests.
+    #[must_use]
+    pub fn buffered() -> Self {
+        let (writer, buffer) = UiWriter::buffer();
+        Self {
+            quiet: false,
+            writer,
+            prompts: PromptHandler::new(Arc::new(TerminalPromptBackend::non_interactive())),
+            captured_buffer: Some(buffer),
+        }
+    }
+
+    /// Reconfigures the UI with a custom prompt handler backend.
+    #[must_use]
+    pub fn with_prompts(mut self, handler: PromptHandler) -> Self {
+        self.prompts = handler;
+        self
     }
 
     /// Sets whether non-critical output should be silenced.
@@ -182,44 +194,139 @@ impl Ui {
         self
     }
 
+    /// Returns a reference to the active writer.
+    #[must_use]
+    pub fn writer(&self) -> &UiWriter {
+        &self.writer
+    }
+
+    /// Retrieves captured output string if in-memory buffer mode is active.
+    #[must_use]
+    pub fn output_string(&self) -> Option<String> {
+        self.captured_buffer.as_ref().and_then(|buf| {
+            buf.lock()
+                .ok()
+                .and_then(|bytes| String::from_utf8(bytes.clone()).ok())
+        })
+    }
+
     /// Prints a header banner unless quiet mode is active.
     pub fn banner(&self, title: &str, subtitle: &str) {
-        if !self.quiet {
-            print_banner(title, subtitle);
+        if self.quiet {
+            return;
         }
+
+        let inner_width: usize = 58;
+        let title_len = visible_width(title) + 2;
+        let title_pad = inner_width.saturating_sub(title_len);
+
+        self.writer.print("");
+        self.writer.print(&format!(
+            " {}",
+            format!("╭{}╮", "─".repeat(inner_width)).cyan()
+        ));
+        self.writer.print(&format!(
+            " {}  {} {}{}",
+            "│".cyan(),
+            format!("⚡ {title}").bold().white(),
+            " ".repeat(title_pad),
+            "│".cyan()
+        ));
+
+        if !subtitle.is_empty() {
+            let sub_len = visible_width(subtitle);
+            let sub_pad = inner_width.saturating_sub(sub_len + 2);
+            self.writer.print(&format!(
+                " {}  {} {}{}",
+                "│".cyan(),
+                subtitle.dimmed(),
+                " ".repeat(sub_pad),
+                "│".cyan()
+            ));
+        }
+
+        self.writer.print(&format!(
+            " {}",
+            format!("╰{}╯", "─".repeat(inner_width)).cyan()
+        ));
+        self.writer.print("");
     }
 
     /// Prints a section header unless quiet mode is active.
     pub fn section(&self, title: &str) {
         if !self.quiet {
-            print_section(title);
+            self.writer.print("");
+            self.writer
+                .print(&format!("{} {}", "◆".cyan(), title.bold().white()));
         }
     }
 
     /// Prints a success message unless quiet mode is active.
     pub fn success(&self, message: &str) {
         if !self.quiet {
-            print_success(message);
+            self.writer
+                .print(&format!("  {} {}", "✔".green().bold(), message));
         }
     }
 
     /// Prints an informational message unless quiet mode is active.
     pub fn info(&self, message: &str) {
         if !self.quiet {
-            print_info(message);
+            self.writer
+                .print(&format!("  {} {}", "➜".blue().bold(), message));
         }
     }
 
     /// Prints a warning message unless quiet mode is active.
     pub fn warn(&self, message: &str) {
         if !self.quiet {
-            print_warn(message);
+            self.writer
+                .print(&format!("  {} {}", "⚠".yellow().bold(), message));
         }
     }
 
     /// Prints an error message.
     pub fn error(&self, message: &str) {
-        print_error(message);
+        self.writer
+            .print_err(&format!("  {} {}", "✖".red().bold(), message));
+    }
+
+    /// Prints a standard line of text unless quiet mode is active.
+    pub fn print(&self, message: impl AsRef<str>) {
+        if !self.quiet {
+            self.writer.print(message.as_ref());
+        }
+    }
+
+    /// Initiates a tracked execution action with status indicators and timing.
+    #[must_use]
+    pub fn action(&self, title: impl Into<String>) -> Action<'_> {
+        Action::new(title, self)
+    }
+
+    /// Creates a multi-step workflow guide builder.
+    #[must_use]
+    pub fn steps(&self) -> Steps {
+        Steps::new()
+    }
+
+    /// Renders sequential workflow steps unless quiet mode is active.
+    pub fn render_steps(&self, steps: &Steps) {
+        if !self.quiet {
+            steps.render(self);
+        }
+    }
+
+    /// Creates an instruction callout box builder.
+    #[must_use]
+    pub fn instruction(&self, heading: impl Into<String>) -> Instruction {
+        Instruction::new(heading)
+    }
+
+    /// Creates a key-value definition list builder.
+    #[must_use]
+    pub fn definition_list(&self) -> DefinitionList {
+        DefinitionList::new()
     }
 
     /// Creates a formatted table.
@@ -240,12 +347,12 @@ impl Ui {
 
     /// Prompts the user for a text value.
     pub fn input(&self, prompt: &str, default: Option<&str>) -> Result<String, std::io::Error> {
-        prompt_input(prompt, default)
+        self.prompts.input(prompt, default)
     }
 
     /// Prompts the user with a confirmation prompt.
     pub fn confirm(&self, prompt: &str, default: bool) -> Result<bool, std::io::Error> {
-        prompt_confirm(prompt, default)
+        self.prompts.confirm(prompt, default)
     }
 
     /// Prompts the user to select from a list.
@@ -255,6 +362,18 @@ impl Ui {
         items: &[T],
         default: usize,
     ) -> Result<usize, std::io::Error> {
-        prompt_select(prompt, items, default)
+        self.prompts.select(prompt, items, default)
+    }
+
+    /// Formats an HTTP method cell badge for display in tables.
+    #[must_use]
+    pub fn cell_http_method(&self, method: &str) -> Cell {
+        cell_http_method(method)
+    }
+
+    /// Formats an HTTP method with standardized ANSI background badges.
+    #[must_use]
+    pub fn format_http_method(&self, method: &str) -> String {
+        format_http_method(method)
     }
 }

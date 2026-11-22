@@ -18,14 +18,19 @@ pub use command::{Argument, Command, CommandFuture, Context, Flag, FlagType, Fla
 pub use error::KarigorError;
 pub use kernel::Kernel;
 pub use template::{publish_files, render as render_template};
-pub use ui::{Cell, Table, Ui};
+pub use ui::{
+    Action, Alignment, Attribute, Cell, Color, Colorize, ColorizeExt, ContentArrangement,
+    DefinitionList, Instruction, ProgressBar, ProgressStyle, Steps, Table, TablePreset, Ui,
+};
 
 /// Essential types and traits for building command-line applications.
 pub mod prelude {
     pub use borno::StrExt;
 
     pub use crate::{
-        Argument, Cell, Command, CommandFuture, Context, Flag, FlagType, FlagValue, KarigorError,
-        Kernel, Table, Ui,
+        Action, Alignment, Argument, Attribute, Cell, Color, Colorize, ColorizeExt, Command,
+        CommandFuture, ContentArrangement, Context, DefinitionList, Flag, FlagType, FlagValue,
+        Instruction, KarigorError, Kernel, ProgressBar, ProgressStyle, Steps, Table, TablePreset,
+        Ui,
     };
 }

@@ -14,6 +14,8 @@ pub enum FlagValue {
     Bool(bool),
     /// Parameterized string flag (e.g. `--port 5555`, `--host 127.0.0.1`).
     Str(String),
+    /// Repeatable multi-value flag (e.g. `--include dir1 --include dir2`).
+    Array(Vec<String>),
 }
 
 /// Supported data types for command-line options.
@@ -23,6 +25,8 @@ pub enum FlagType {
     Boolean,
     /// Flag accepts an associated value.
     String,
+    /// Flag accepts multiple repeatable values.
+    Array,
 }
 
 /// Specification for a positional command argument.
@@ -36,6 +40,8 @@ pub struct Argument {
     pub required: bool,
     /// Optional default fallback value if omitted.
     pub default: Option<String>,
+    /// Whether the argument captures multiple trailing positional tokens.
+    pub variadic: bool,
 }
 
 impl Argument {
@@ -47,6 +53,7 @@ impl Argument {
             description: description.into(),
             required: true,
             default: None,
+            variadic: false,
         }
     }
 
@@ -62,6 +69,19 @@ impl Argument {
             description: description.into(),
             required: false,
             default,
+            variadic: false,
+        }
+    }
+
+    /// Creates a variadic positional argument capturing all trailing positional parameters.
+    #[must_use]
+    pub fn variadic(name: impl Into<String>, description: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            description: description.into(),
+            required: false,
+            default: None,
+            variadic: true,
         }
     }
 }
@@ -79,6 +99,10 @@ pub struct Flag {
     pub flag_type: FlagType,
     /// Optional default fallback value for string options.
     pub default: Option<String>,
+    /// Allowed value choices if constrained.
+    pub choices: Vec<String>,
+    /// Whether this flag must be explicitly supplied.
+    pub required: bool,
 }
 
 impl Flag {
@@ -95,6 +119,8 @@ impl Flag {
             description: description.into(),
             flag_type: FlagType::Boolean,
             default: None,
+            choices: Vec::new(),
+            required: false,
         }
     }
 
@@ -112,7 +138,45 @@ impl Flag {
             description: description.into(),
             flag_type: FlagType::String,
             default,
+            choices: Vec::new(),
+            required: false,
         }
+    }
+
+    /// Creates a repeatable array option accepting multiple values.
+    #[must_use]
+    pub fn array(
+        name: impl Into<String>,
+        short: Option<char>,
+        description: impl Into<String>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            short,
+            description: description.into(),
+            flag_type: FlagType::Array,
+            default: None,
+            choices: Vec::new(),
+            required: false,
+        }
+    }
+
+    /// Restricts allowed values to an explicit list of choices.
+    #[must_use]
+    pub fn choices<I, S>(mut self, choices: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.choices = choices.into_iter().map(Into::into).collect();
+        self
+    }
+
+    /// Marks this flag as mandatory.
+    #[must_use]
+    pub fn required(mut self) -> Self {
+        self.required = true;
+        self
     }
 }
 
@@ -121,6 +185,8 @@ impl Flag {
 pub struct Context {
     /// Parsed positional arguments indexed by name.
     pub args: HashMap<String, String>,
+    /// Parsed variadic arguments indexed by name.
+    pub arg_lists: HashMap<String, Vec<String>>,
     /// Parsed flags and options indexed by name.
     pub flags: HashMap<String, FlagValue>,
     /// Raw unparsed positional arguments.
@@ -134,6 +200,14 @@ impl Context {
     #[must_use]
     pub fn arg(&self, name: &str) -> Option<&str> {
         self.args.get(name).map(String::as_str)
+    }
+
+    /// Retrieves a variadic argument token list by name.
+    #[must_use]
+    pub fn arg_list(&self, name: &str) -> Vec<&str> {
+        self.arg_lists
+            .get(name)
+            .map_or_else(Vec::new, |items| items.iter().map(String::as_str).collect())
     }
 
     /// Retrieves a boolean flag value, defaulting to `false` if not set.
@@ -152,6 +226,36 @@ impl Context {
             Some(FlagValue::Str(val)) => Some(val.as_str()),
             _ => None,
         }
+    }
+
+    /// Retrieves a repeatable array flag's values by name.
+    #[must_use]
+    pub fn flag_array(&self, name: &str) -> Vec<&str> {
+        match self.flags.get(name) {
+            Some(FlagValue::Array(items)) => items.iter().map(String::as_str).collect(),
+            Some(FlagValue::Str(item)) => vec![item.as_str()],
+            _ => Vec::new(),
+        }
+    }
+
+    /// Prompts the user for a text string.
+    pub fn input(&self, prompt: &str, default: Option<&str>) -> std::io::Result<String> {
+        self.ui.input(prompt, default)
+    }
+
+    /// Prompts the user for boolean confirmation.
+    pub fn confirm(&self, prompt: &str, default: bool) -> std::io::Result<bool> {
+        self.ui.confirm(prompt, default)
+    }
+
+    /// Prompts the user to select an item from a list.
+    pub fn select<T: ToString + std::fmt::Display>(
+        &self,
+        prompt: &str,
+        items: &[T],
+        default: usize,
+    ) -> std::io::Result<usize> {
+        self.ui.select(prompt, items, default)
     }
 }
 

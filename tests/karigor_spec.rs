@@ -236,7 +236,7 @@ fn test_ui_table_and_method_formatting() {
     let mut table = ui.table(&["Method", "Route"]);
     table.add_row(vec![
         karigor::ui::cell_http_method("GET"),
-        comfy_table::Cell::new("/users"),
+        Cell::new("/users"),
     ]);
 
     let output = table.to_string();

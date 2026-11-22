@@ -2,12 +2,13 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use colored::Colorize;
-
 use crate::{
     command::{Command, Context, Flag, FlagType, FlagValue},
     error::KarigorError,
-    ui::Ui,
+    ui::{
+        Ui,
+        ansi::{ColorizeExt, set_color_enabled},
+    },
 };
 
 fn levenshtein(first: &str, second: &str) -> usize {
@@ -68,6 +69,19 @@ impl Kernel {
         self
     }
 
+    /// Configures a custom UI instance for terminal output and prompts.
+    #[must_use]
+    pub fn with_ui(mut self, ui: Ui) -> Self {
+        self.ui = ui;
+        self
+    }
+
+    /// Returns a reference to the active UI instance.
+    #[must_use]
+    pub fn ui(&self) -> &Ui {
+        &self.ui
+    }
+
     /// Registers a command into the kernel.
     #[must_use]
     pub fn register<C: Command + 'static>(mut self, command: C) -> Self {
@@ -92,7 +106,7 @@ impl Kernel {
         self.handle(raw_args).await
     }
 
-    /// Normalizes incoming command line tokens, handling cargo subcommand invocations and colon namespaces.
+    /// Normalizes incoming command line tokens, handling binary prefixes and colon namespaces.
     #[must_use]
     pub fn normalize_args(&self, raw: &[String]) -> Vec<String> {
         if raw.is_empty() {
@@ -131,7 +145,22 @@ impl Kernel {
 
     /// Dispatches execution to the appropriate command based on input arguments.
     pub async fn handle(&self, raw_args: Vec<String>) -> Result<(), KarigorError> {
-        let tokens = self.normalize_args(&raw_args);
+        let mut tokens = self.normalize_args(&raw_args);
+
+        // Check global flags: --no-ansi, -q, --quiet
+        let mut quiet = false;
+        let mut index = 0;
+        while index < tokens.len() {
+            if tokens[index] == "--no-ansi" {
+                set_color_enabled(false);
+                tokens.remove(index);
+            } else if tokens[index] == "-q" || tokens[index] == "--quiet" {
+                quiet = true;
+                tokens.remove(index);
+            } else {
+                index += 1;
+            }
+        }
 
         if tokens.is_empty() || tokens[0] == "-h" || tokens[0] == "--help" || tokens[0] == "help" {
             self.print_help();
@@ -139,7 +168,9 @@ impl Kernel {
         }
 
         if tokens[0] == "-V" || tokens[0] == "--version" || tokens[0] == "version" {
-            println!("{} {}", self.name.bold().cyan(), self.version);
+            self.ui
+                .writer()
+                .print(&format!("{} {}", self.name.bold().cyan(), self.version));
             return Ok(());
         }
 
@@ -167,7 +198,12 @@ impl Kernel {
             return Ok(());
         }
 
-        let context = self.parse_command_context(command.as_ref(), &tokens[1..])?;
+        let mut ui_instance = self.ui.clone();
+        if quiet {
+            ui_instance = ui_instance.quiet(true);
+        }
+
+        let context = self.parse_command_context(command.as_ref(), &tokens[1..], ui_instance)?;
         let mut mutable_context = context;
 
         command.run(&mut mutable_context).await
@@ -192,6 +228,7 @@ impl Kernel {
         &self,
         command: &dyn Command,
         args_slice: &[String],
+        ui_instance: Ui,
     ) -> Result<Context, KarigorError> {
         let declared_args = command.arguments();
         let declared_flags = command.flags();
@@ -215,6 +252,7 @@ impl Kernel {
             if let Some(long_name) = token.strip_prefix("--") {
                 if let Some((name, val)) = long_name.split_once('=') {
                     if let Some(flag) = flag_lookup.get(name) {
+                        self.validate_flag_choice(flag, val)?;
                         match flag.flag_type {
                             FlagType::Boolean => {
                                 parsed_flags.insert(
@@ -226,6 +264,17 @@ impl Kernel {
                                 parsed_flags
                                     .insert(flag.name.clone(), FlagValue::Str(val.to_string()));
                             }
+                            FlagType::Array => match parsed_flags.get_mut(&flag.name) {
+                                Some(FlagValue::Array(items)) => {
+                                    items.push(val.to_string());
+                                }
+                                _ => {
+                                    parsed_flags.insert(
+                                        flag.name.clone(),
+                                        FlagValue::Array(vec![val.to_string()]),
+                                    );
+                                }
+                            },
                         }
                     } else {
                         parsed_flags.insert(name.to_string(), FlagValue::Str(val.to_string()));
@@ -238,10 +287,9 @@ impl Kernel {
                         FlagType::String => {
                             index += 1;
                             if index < args_slice.len() && !args_slice[index].starts_with('-') {
-                                parsed_flags.insert(
-                                    flag.name.clone(),
-                                    FlagValue::Str(args_slice[index].clone()),
-                                );
+                                let val = &args_slice[index];
+                                self.validate_flag_choice(flag, val)?;
+                                parsed_flags.insert(flag.name.clone(), FlagValue::Str(val.clone()));
                             } else if let Some(ref default) = flag.default {
                                 parsed_flags
                                     .insert(flag.name.clone(), FlagValue::Str(default.clone()));
@@ -252,6 +300,35 @@ impl Kernel {
                                 )));
                             }
                         }
+                        FlagType::Array => {
+                            index += 1;
+                            if index < args_slice.len() && !args_slice[index].starts_with('-') {
+                                let val = args_slice[index].clone();
+                                self.validate_flag_choice(flag, &val)?;
+                                match parsed_flags.get_mut(&flag.name) {
+                                    Some(FlagValue::Array(items)) => {
+                                        items.push(val);
+                                    }
+                                    _ => {
+                                        parsed_flags
+                                            .insert(flag.name.clone(), FlagValue::Array(vec![val]));
+                                    }
+                                }
+                            } else {
+                                return Err(KarigorError::InvalidFlag(format!(
+                                    "Option `--{}` requires a value",
+                                    flag.name
+                                )));
+                            }
+                        }
+                    }
+                } else if let Some(negated_name) = long_name.strip_prefix("no-") {
+                    if let Some(flag) = flag_lookup.get(negated_name) {
+                        if flag.flag_type == FlagType::Boolean {
+                            parsed_flags.insert(flag.name.clone(), FlagValue::Bool(false));
+                        }
+                    } else {
+                        parsed_flags.insert(long_name.to_string(), FlagValue::Bool(true));
                     }
                 } else {
                     parsed_flags.insert(long_name.to_string(), FlagValue::Bool(true));
@@ -266,13 +343,36 @@ impl Kernel {
                             FlagType::String => {
                                 index += 1;
                                 if index < args_slice.len() && !args_slice[index].starts_with('-') {
-                                    parsed_flags.insert(
-                                        flag.name.clone(),
-                                        FlagValue::Str(args_slice[index].clone()),
-                                    );
+                                    let val = &args_slice[index];
+                                    self.validate_flag_choice(flag, val)?;
+                                    parsed_flags
+                                        .insert(flag.name.clone(), FlagValue::Str(val.clone()));
                                 } else if let Some(ref default) = flag.default {
                                     parsed_flags
                                         .insert(flag.name.clone(), FlagValue::Str(default.clone()));
+                                } else {
+                                    return Err(KarigorError::InvalidFlag(format!(
+                                        "Option `-{}` requires a value",
+                                        ch
+                                    )));
+                                }
+                            }
+                            FlagType::Array => {
+                                index += 1;
+                                if index < args_slice.len() && !args_slice[index].starts_with('-') {
+                                    let val = args_slice[index].clone();
+                                    self.validate_flag_choice(flag, &val)?;
+                                    match parsed_flags.get_mut(&flag.name) {
+                                        Some(FlagValue::Array(items)) => {
+                                            items.push(val);
+                                        }
+                                        _ => {
+                                            parsed_flags.insert(
+                                                flag.name.clone(),
+                                                FlagValue::Array(vec![val]),
+                                            );
+                                        }
+                                    }
                                 } else {
                                     return Err(KarigorError::InvalidFlag(format!(
                                         "Option `-{}` requires a value",
@@ -290,22 +390,43 @@ impl Kernel {
             index += 1;
         }
 
-        // Apply defaults for unsupplied flags
+        // Apply defaults and verify required flags
         for flag in &declared_flags {
             if !parsed_flags.contains_key(&flag.name) {
                 if let Some(ref default_val) = flag.default {
                     parsed_flags.insert(flag.name.clone(), FlagValue::Str(default_val.clone()));
                 } else if flag.flag_type == FlagType::Boolean {
                     parsed_flags.insert(flag.name.clone(), FlagValue::Bool(false));
+                } else if flag.flag_type == FlagType::Array {
+                    parsed_flags.insert(flag.name.clone(), FlagValue::Array(Vec::new()));
+                } else if flag.required {
+                    return Err(KarigorError::InvalidFlag(format!(
+                        "Missing required option `--{}`",
+                        flag.name
+                    )));
                 }
             }
         }
 
         // Map positional arguments
         let mut parsed_args = HashMap::new();
-        for (arg_idx, arg_spec) in declared_args.iter().enumerate() {
-            if arg_idx < positional_values.len() {
-                parsed_args.insert(arg_spec.name.clone(), positional_values[arg_idx].clone());
+        let mut parsed_arg_lists = HashMap::new();
+        let mut pos_idx = 0;
+
+        for arg_spec in &declared_args {
+            if arg_spec.variadic {
+                let trailing = if pos_idx < positional_values.len() {
+                    positional_values[pos_idx..].to_vec()
+                } else {
+                    Vec::new()
+                };
+                parsed_arg_lists.insert(arg_spec.name.clone(), trailing);
+                break;
+            }
+
+            if pos_idx < positional_values.len() {
+                parsed_args.insert(arg_spec.name.clone(), positional_values[pos_idx].clone());
+                pos_idx += 1;
             } else if let Some(ref default) = arg_spec.default {
                 parsed_args.insert(arg_spec.name.clone(), default.clone());
             } else if arg_spec.required {
@@ -318,29 +439,63 @@ impl Kernel {
 
         Ok(Context {
             args: parsed_args,
+            arg_lists: parsed_arg_lists,
             flags: parsed_flags,
             raw_args: positional_values,
-            ui: self.ui.clone(),
+            ui: ui_instance,
         })
+    }
+
+    fn validate_flag_choice(&self, flag: &Flag, value: &str) -> Result<(), KarigorError> {
+        if !flag.choices.is_empty() && !flag.choices.iter().any(|c| c == value) {
+            return Err(KarigorError::InvalidFlag(format!(
+                "Invalid value `{value}` for option `--{}`. Allowed values: [{}]",
+                flag.name,
+                flag.choices.join(", ")
+            )));
+        }
+        Ok(())
     }
 
     /// Prints the application help page with grouped commands.
     pub fn print_help(&self) {
-        println!();
-        println!("{} {}", self.name.bold().cyan(), self.version.dimmed());
-        println!("{}", self.description);
-        println!();
+        let writer = self.ui.writer();
+        writer.print("");
+        writer.print(&format!(
+            "{} {}",
+            self.name.bold().cyan(),
+            self.version.dimmed()
+        ));
+        writer.print(&self.description);
+        writer.print("");
 
-        println!("{}", "USAGE:".bold().yellow());
-        println!("  {} [command] [options] [arguments]", self.name.cyan());
-        println!();
+        writer.print(&"USAGE:".bold().yellow().to_string());
+        writer.print(&format!(
+            "  {} [command] [options] [arguments]",
+            self.name.cyan()
+        ));
+        writer.print("");
 
-        println!("{}", "GLOBAL OPTIONS:".bold().yellow());
-        println!("  {:20} Show this help overview", "-h, --help".cyan());
-        println!("  {:20} Print application version", "-V, --version".cyan());
-        println!();
+        writer.print(&"GLOBAL OPTIONS:".bold().yellow().to_string());
+        writer.print(&format!(
+            "  {:20} Show this help overview",
+            "-h, --help".cyan()
+        ));
+        writer.print(&format!(
+            "  {:20} Print application version",
+            "-V, --version".cyan()
+        ));
+        writer.print(&format!(
+            "  {:20} Suppress non-critical output",
+            "-q, --quiet".cyan()
+        ));
+        writer.print(&format!(
+            "  {:20} Disable colored output",
+            "--no-ansi".cyan()
+        ));
+        writer.print("");
 
-        println!("{}", "AVAILABLE COMMANDS:".bold().yellow());
+        writer.print(&"AVAILABLE COMMANDS:".bold().yellow().to_string());
 
         // Group commands
         let mut root_commands = Vec::new();
@@ -361,38 +516,49 @@ impl Kernel {
         root_commands.sort_by_key(|c| c.name());
 
         for cmd in root_commands {
-            println!("  {:22} {}", cmd.name().bold().white(), cmd.description());
+            writer.print(&format!(
+                "  {:22} {}",
+                cmd.name().bold().white(),
+                cmd.description()
+            ));
         }
 
         let mut sorted_groups: Vec<_> = grouped_commands.into_iter().collect();
         sorted_groups.sort_by(|a, b| a.0.cmp(&b.0));
 
         for (group, mut cmds) in sorted_groups {
-            println!();
+            writer.print("");
             let label = self.groups.get(&group).cloned().unwrap_or(group);
-            println!(" {}:", label.bold().yellow());
+            writer.print(&format!(" {}:", label.bold().yellow()));
             cmds.sort_by_key(|c| c.name());
             for cmd in cmds {
-                println!("  {:22} {}", cmd.name().bold().white(), cmd.description());
+                writer.print(&format!(
+                    "  {:22} {}",
+                    cmd.name().bold().white(),
+                    cmd.description()
+                ));
             }
         }
 
-        println!();
+        writer.print("");
     }
 
     /// Prints detailed usage information for a specific command.
     pub fn print_command_help(&self, command: &dyn Command) {
-        println!();
-        println!(
+        let writer = self.ui.writer();
+        writer.print("");
+        writer.print(&format!(
             "{}: {}",
             command.name().bold().cyan(),
             command.description()
-        );
-        println!();
+        ));
+        writer.print("");
 
         let mut usage = format!("  {} {}", self.name, command.name());
         for arg in command.arguments() {
-            if arg.required {
+            if arg.variadic {
+                usage.push_str(&format!(" [{}...]", arg.name));
+            } else if arg.required {
                 usage.push_str(&format!(" <{}>", arg.name));
             } else {
                 usage.push_str(&format!(" [{}]", arg.name));
@@ -402,32 +568,38 @@ impl Kernel {
             usage.push_str(" [options]");
         }
 
-        println!("{}", "USAGE:".bold().yellow());
-        println!("{usage}");
-        println!();
+        writer.print(&"USAGE:".bold().yellow().to_string());
+        writer.print(&usage);
+        writer.print("");
 
         if !command.arguments().is_empty() {
-            println!("{}", "ARGUMENTS:".bold().yellow());
+            writer.print(&"ARGUMENTS:".bold().yellow().to_string());
             for arg in command.arguments() {
-                let req = if arg.required { "required" } else { "optional" };
-                println!(
+                let req = if arg.variadic {
+                    "variadic"
+                } else if arg.required {
+                    "required"
+                } else {
+                    "optional"
+                };
+                writer.print(&format!(
                     "  {:20} {} ({})",
                     arg.name.cyan(),
                     arg.description,
                     req.dimmed()
-                );
+                ));
             }
-            println!();
+            writer.print("");
         }
 
         if !command.flags().is_empty() {
-            println!("{}", "OPTIONS:".bold().yellow());
+            writer.print(&"OPTIONS:".bold().yellow().to_string());
             for flag in command.flags() {
                 let short_part = flag.short.map_or(String::new(), |s| format!("-{s}, "));
                 let flag_label = format!("{short_part}--{}", flag.name);
-                println!("  {:20} {}", flag_label.cyan(), flag.description);
+                writer.print(&format!("  {:20} {}", flag_label.cyan(), flag.description));
             }
-            println!();
+            writer.print("");
         }
     }
 }
