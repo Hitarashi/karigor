@@ -11,9 +11,42 @@ fn banner_renders_with_and_without_subtitle() {
 #[test]
 fn banner_handles_wide_and_unicode_titles_without_panicking() {
     ui::print_banner(
-        "🚀 করিগর — Command Line Toolkit",
+        "করিগর — Command Line Toolkit",
         "A subtitle long enough to overflow",
     );
+}
+
+#[test]
+fn banner_and_instruction_lines_have_identical_visible_widths() {
+    let ui = Ui::buffered();
+    ui.banner(
+        "Druto Scaffolding Wizard",
+        "Generate a new Druto web application",
+    );
+    let output = ui.output_string().expect("buffer should contain banner");
+    let lines: Vec<&str> = output.lines().filter(|line| !line.is_empty()).collect();
+    assert_eq!(lines.len(), 4);
+    let widths: Vec<usize> = lines
+        .iter()
+        .map(|line| karigor::ui::visible_width(line))
+        .collect();
+    for width in &widths {
+        assert_eq!(*width, widths[0]);
+    }
+
+    let mut instruction = ui.instruction("Deployment Checklist");
+    instruction.add("Verify production credentials");
+    instruction.add("Run database backup");
+    let text = instruction.prepare();
+    let inst_lines: Vec<&str> = text.lines().filter(|line| !line.is_empty()).collect();
+    assert_eq!(inst_lines.len(), 6);
+    let inst_widths: Vec<usize> = inst_lines
+        .iter()
+        .map(|line| karigor::ui::visible_width(line))
+        .collect();
+    for width in &inst_widths {
+        assert_eq!(*width, inst_widths[0]);
+    }
 }
 
 #[test]

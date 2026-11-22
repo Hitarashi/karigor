@@ -216,28 +216,28 @@ impl Ui {
             return;
         }
 
-        let inner_width: usize = 58;
-        let title_len = visible_width(title) + 2;
-        let title_pad = inner_width.saturating_sub(title_len);
+        let content_width = visible_width(title).max(visible_width(subtitle));
+        let inner_width: usize = 58.max(content_width + 4);
 
         self.writer.print("");
         self.writer.print(&format!(
             " {}",
             format!("╭{}╮", "─".repeat(inner_width)).cyan()
         ));
+
+        let title_pad = inner_width.saturating_sub(2 + visible_width(title));
         self.writer.print(&format!(
-            " {}  {} {}{}",
+            " {}  {}{}{}",
             "│".cyan(),
-            format!("⚡ {title}").bold().white(),
+            title.bold().white(),
             " ".repeat(title_pad),
             "│".cyan()
         ));
 
         if !subtitle.is_empty() {
-            let sub_len = visible_width(subtitle);
-            let sub_pad = inner_width.saturating_sub(sub_len + 2);
+            let sub_pad = inner_width.saturating_sub(2 + visible_width(subtitle));
             self.writer.print(&format!(
-                " {}  {} {}{}",
+                " {}  {}{}{}",
                 "│".cyan(),
                 subtitle.dimmed(),
                 " ".repeat(sub_pad),

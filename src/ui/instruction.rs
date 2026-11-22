@@ -36,19 +36,18 @@ impl Instruction {
             widest = widest.max(visible_width(item) + 2);
         }
 
-        let padding = 4;
-        let box_width = widest + padding;
+        let inner_width = widest + 4;
 
-        let top_border = format!("╭{}╮", "─".repeat(box_width + 2));
-        let mid_border = format!("├{}┤", "─".repeat(box_width + 2));
-        let bot_border = format!("╰{}╯", "─".repeat(box_width + 2));
+        let top_border = format!("╭{}╮", "─".repeat(inner_width));
+        let mid_border = format!("├{}┤", "─".repeat(inner_width));
+        let bot_border = format!("╰{}╯", "─".repeat(inner_width));
 
         let mut lines = Vec::new();
         lines.push(top_border.cyan().to_string());
 
-        let heading_pad = box_width.saturating_sub(visible_width(&self.heading));
+        let heading_pad = inner_width.saturating_sub(2 + visible_width(&self.heading));
         lines.push(format!(
-            "{}  {}{}  {}",
+            "{}  {}{}{}",
             "│".cyan(),
             self.heading.bold().white(),
             " ".repeat(heading_pad),
@@ -59,9 +58,9 @@ impl Instruction {
             lines.push(mid_border.cyan().to_string());
             for item in &self.items {
                 let item_text = format!("➜ {item}");
-                let item_pad = box_width.saturating_sub(visible_width(&item_text));
+                let item_pad = inner_width.saturating_sub(2 + visible_width(&item_text));
                 lines.push(format!(
-                    "{}  {}{}  {}",
+                    "{}  {}{}{}",
                     "│".cyan(),
                     item_text.cyan(),
                     " ".repeat(item_pad),
