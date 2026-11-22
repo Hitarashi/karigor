@@ -1,11 +1,22 @@
 //! Command trait definitions, typed arguments, flags, and execution context.
 
-use std::{collections::HashMap, future::Future, pin::Pin};
+use std::collections::HashMap;
+#[cfg(feature = "async")]
+use std::{future::Future, pin::Pin};
 
-use crate::{error::KarigorError, ui::Ui};
+use crate::{error::Error, ui::Ui};
 
+#[cfg(feature = "async")]
 /// Type definition for the future returned by a command's asynchronous execution lifecycle.
-pub type CommandFuture<'a> = Pin<Box<dyn Future<Output = Result<(), KarigorError>> + Send + 'a>>;
+pub type CommandFuture<'a> = Pin<Box<dyn Future<Output = Result<(), Error>> + Send + 'a>>;
+
+/// Handler function for synchronous command execution closures.
+pub type CommandHandler = Box<dyn Fn(&mut Context) -> Result<(), Error> + Send + Sync>;
+
+#[cfg(feature = "async")]
+/// Handler function for asynchronous command execution closures.
+pub type AsyncCommandHandler =
+    Box<dyn for<'a> Fn(&'a mut Context) -> CommandFuture<'a> + Send + Sync>;
 
 /// Value representations for command-line flags.
 #[derive(Debug, Clone, PartialEq)]
@@ -257,15 +268,30 @@ impl Context {
     ) -> std::io::Result<usize> {
         self.ui.select(prompt, items, default)
     }
+
+    /// Prompts the user for a masked or silent password.
+    pub fn password(&self, prompt: &str) -> std::io::Result<String> {
+        self.ui.password(prompt)
+    }
+
+    /// Prompts the user to select multiple items from a list.
+    pub fn multiselect<T: ToString + std::fmt::Display>(
+        &self,
+        prompt: &str,
+        items: &[T],
+        defaults: &[usize],
+    ) -> std::io::Result<Vec<usize>> {
+        self.ui.multiselect(prompt, items, defaults)
+    }
 }
 
 /// Trait implemented by CLI commands to define metadata, arguments, flags, and execution logic.
 pub trait Command: Send + Sync {
     /// Primary invocation identifier for the command (e.g. `"build"`, `"make:route"`).
-    fn name(&self) -> &'static str;
+    fn name(&self) -> &str;
 
     /// Short human-readable summary of what the command performs.
-    fn description(&self) -> &'static str;
+    fn description(&self) -> &str;
 
     /// Alternative command aliases that resolve to this command.
     fn aliases(&self) -> &'static [&'static str] {
@@ -282,6 +308,149 @@ pub trait Command: Send + Sync {
         Vec::new()
     }
 
-    /// Executes the command lifecycle asynchronously.
-    fn run<'a>(&'a self, ctx: &'a mut Context) -> CommandFuture<'a>;
+    /// Executes the command synchronously.
+    fn run(&self, ctx: &mut Context) -> Result<(), Error> {
+        let _ = ctx;
+        Err(Error::Execution(
+            format!(
+                "Command `{}` does not provide a synchronous execution handler",
+                self.name()
+            )
+            .into(),
+        ))
+    }
+
+    #[cfg(feature = "async")]
+    /// Executes the command asynchronously.
+    fn run_async<'a>(&'a self, ctx: &'a mut Context) -> CommandFuture<'a> {
+        let result = self.run(ctx);
+        Box::pin(std::future::ready(result))
+    }
+}
+
+/// Fluent and closure-based builder for defining commands without boilerplate structs.
+pub struct CommandBuilder {
+    name: &'static str,
+    description: &'static str,
+    aliases: &'static [&'static str],
+    arguments: Vec<Argument>,
+    flags: Vec<Flag>,
+    handler: Option<CommandHandler>,
+    #[cfg(feature = "async")]
+    async_handler: Option<AsyncCommandHandler>,
+}
+
+impl CommandBuilder {
+    /// Creates a new command builder with the given name and description.
+    #[must_use]
+    pub fn new(name: &'static str, description: &'static str) -> Self {
+        Self {
+            name,
+            description,
+            aliases: &[],
+            arguments: Vec::new(),
+            flags: Vec::new(),
+            handler: None,
+            #[cfg(feature = "async")]
+            async_handler: None,
+        }
+    }
+
+    /// Sets alternative aliases for this command.
+    #[must_use]
+    pub fn aliases(mut self, aliases: &'static [&'static str]) -> Self {
+        self.aliases = aliases;
+        self
+    }
+
+    /// Appends a positional argument specification.
+    #[must_use]
+    pub fn argument(mut self, argument: Argument) -> Self {
+        self.arguments.push(argument);
+        self
+    }
+
+    /// Appends a flag or option specification.
+    #[must_use]
+    pub fn flag(mut self, flag: Flag) -> Self {
+        self.flags.push(flag);
+        self
+    }
+
+    /// Configures the synchronous execution closure for this command.
+    #[must_use]
+    pub fn handle<F>(mut self, handler: F) -> Self
+    where
+        F: Fn(&mut Context) -> Result<(), Error> + Send + Sync + 'static,
+    {
+        self.handler = Some(Box::new(handler));
+        self
+    }
+
+    #[cfg(feature = "async")]
+    /// Configures the asynchronous execution closure for this command.
+    #[must_use]
+    pub fn handle_async<F>(mut self, handler: F) -> Self
+    where
+        F: for<'a> Fn(&'a mut Context) -> CommandFuture<'a> + Send + Sync + 'static,
+    {
+        self.async_handler = Some(Box::new(handler));
+        self
+    }
+}
+
+impl Command for CommandBuilder {
+    fn name(&self) -> &str {
+        self.name
+    }
+
+    fn description(&self) -> &str {
+        self.description
+    }
+
+    fn aliases(&self) -> &'static [&'static str] {
+        self.aliases
+    }
+
+    fn arguments(&self) -> Vec<Argument> {
+        self.arguments.clone()
+    }
+
+    fn flags(&self) -> Vec<Flag> {
+        self.flags.clone()
+    }
+
+    fn run(&self, ctx: &mut Context) -> Result<(), Error> {
+        if let Some(ref handler) = self.handler {
+            handler(ctx)
+        } else {
+            let _ = ctx;
+            Err(Error::Execution(
+                format!(
+                    "Command `{}` does not provide a synchronous execution handler",
+                    self.name
+                )
+                .into(),
+            ))
+        }
+    }
+
+    #[cfg(feature = "async")]
+    fn run_async<'a>(&'a self, ctx: &'a mut Context) -> CommandFuture<'a> {
+        if let Some(ref async_handler) = self.async_handler {
+            async_handler(ctx)
+        } else if let Some(ref sync_handler) = self.handler {
+            let result = sync_handler(ctx);
+            Box::pin(std::future::ready(result))
+        } else {
+            let _ = ctx;
+            Box::pin(std::future::ready(Err(Error::Execution(
+                format!(
+                    "Command `{}` does not provide an execution handler",
+                    self.name
+                )
+                .into(),
+            ))))
+        }
+    }
 }

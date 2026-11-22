@@ -9,7 +9,7 @@ use minijinja::{
 };
 use serde_json::Value;
 
-use crate::error::KarigorError;
+use crate::error::Error;
 
 /// Creates a pre-configured MiniJinja environment with string inflection and casing filters.
 #[must_use]
@@ -24,7 +24,7 @@ pub fn create_environment() -> Environment<'static> {
 }
 
 /// Renders a raw template string using the provided JSON context data.
-pub fn render(template_str: &str, context: &Value) -> Result<String, KarigorError> {
+pub fn render(template_str: &str, context: &Value) -> Result<String, Error> {
     let mut env = create_environment();
     env.add_template("template", template_str)?;
     let template = env.get_template("template")?;

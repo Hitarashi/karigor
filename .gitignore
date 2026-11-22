@@ -3,3 +3,5 @@
 .idea
 
 *.proptest-regressions
+*.profraw
+

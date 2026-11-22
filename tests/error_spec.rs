@@ -66,26 +66,22 @@ fn io_error_converts_and_exposes_source() {
     assert!(err.source().is_some());
 }
 
-#[tokio::test]
-async fn execution_source_survives_kernel_dispatch() {
+#[test]
+fn execution_source_survives_kernel_dispatch() {
     struct FailingCommand;
 
     impl Command for FailingCommand {
-        fn name(&self) -> &'static str {
+        fn name(&self) -> &str {
             "fail"
         }
 
-        fn description(&self) -> &'static str {
+        fn description(&self) -> &str {
             "Always fails"
         }
 
-        fn run<'a>(&'a self, ctx: &'a mut Context) -> CommandFuture<'a> {
+        fn run(&self, ctx: &mut Context) -> Result<(), Error> {
             let _ = ctx;
-            Box::pin(async {
-                Err(KarigorError::Execution(Box::new(std::io::Error::other(
-                    "boom",
-                ))))
-            })
+            Err(Error::Execution(Box::new(std::io::Error::other("boom"))))
         }
     }
 
@@ -93,7 +89,6 @@ async fn execution_source_survives_kernel_dispatch() {
 
     let err = kernel
         .handle(vec!["test-cli".to_string(), "fail".to_string()])
-        .await
         .unwrap_err();
 
     assert!(err.to_string().contains("boom"));
@@ -105,4 +100,13 @@ fn command_execution_accepts_boxed_errors() {
     let err = KarigorError::Execution(Box::new(std::io::Error::other("shared boom")));
 
     assert!(err.to_string().contains("shared boom"));
+}
+
+#[test]
+fn error_conversions_from_string_and_str() {
+    let from_string: Error = "string failure".to_string().into();
+    assert!(from_string.to_string().contains("string failure"));
+
+    let from_str: Error = "str failure".into();
+    assert!(from_str.to_string().contains("str failure"));
 }

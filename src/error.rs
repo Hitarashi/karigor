@@ -4,7 +4,7 @@ use std::{fmt, io};
 
 /// Errors encountered during command execution or kernel dispatch.
 #[derive(Debug)]
-pub enum KarigorError {
+pub enum Error {
     /// Command not found in the registry.
     CommandNotFound {
         /// The name of the unrecognized command.
@@ -24,7 +24,24 @@ pub enum KarigorError {
     Io(io::Error),
 }
 
-impl fmt::Display for KarigorError {
+/// Backwards-compatible type alias for [`Error`].
+pub type KarigorError = Error;
+
+impl Error {
+    /// Returns the standard POSIX exit code associated with this error.
+    ///
+    /// - Command line usage errors (command not found, missing arguments, invalid flags): `2`
+    /// - Runtime execution, I/O, or template rendering failures: `1`
+    #[must_use]
+    pub fn exit_code(&self) -> i32 {
+        match self {
+            Self::CommandNotFound { .. } | Self::InvalidArgument(_) | Self::InvalidFlag(_) => 2,
+            Self::Io(_) | Self::Execution(_) | Self::Template(_) => 1,
+        }
+    }
+}
+
+impl fmt::Display for Error {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::CommandNotFound { name, suggestion } => {
@@ -46,7 +63,7 @@ impl fmt::Display for KarigorError {
     }
 }
 
-impl std::error::Error for KarigorError {
+impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Execution(err) => Some(err.as_ref()),
@@ -57,14 +74,26 @@ impl std::error::Error for KarigorError {
     }
 }
 
-impl From<io::Error> for KarigorError {
+impl From<io::Error> for Error {
     fn from(err: io::Error) -> Self {
         Self::Io(err)
     }
 }
 
-impl From<minijinja::Error> for KarigorError {
+impl From<minijinja::Error> for Error {
     fn from(err: minijinja::Error) -> Self {
         Self::Template(err)
+    }
+}
+
+impl From<String> for Error {
+    fn from(msg: String) -> Self {
+        Self::Execution(msg.into())
+    }
+}
+
+impl From<&str> for Error {
+    fn from(msg: &str) -> Self {
+        Self::Execution(msg.to_string().into())
     }
 }

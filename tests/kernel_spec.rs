@@ -25,12 +25,10 @@ impl Command for ParseCommand {
         ]
     }
 
-    fn run<'a>(&'a self, ctx: &'a mut Context) -> CommandFuture<'a> {
-        Box::pin(async move {
-            assert_eq!(ctx.arg("name"), Some("value"));
-            assert_eq!(ctx.raw_args, vec!["value".to_string()]);
-            Ok(())
-        })
+    fn run(&self, ctx: &mut Context) -> Result<(), Error> {
+        assert_eq!(ctx.arg("name"), Some("value"));
+        assert_eq!(ctx.raw_args, vec!["value".to_string()]);
+        Ok(())
     }
 }
 
@@ -60,13 +58,11 @@ impl Command for DefaultsCommand {
         ]
     }
 
-    fn run<'a>(&'a self, ctx: &'a mut Context) -> CommandFuture<'a> {
-        Box::pin(async move {
-            assert_eq!(ctx.arg("title"), Some("Developer"));
-            assert_eq!(ctx.flag_str("prefix"), Some("Hello"));
-            assert!(!ctx.flag_bool("loud"));
-            Ok(())
-        })
+    fn run(&self, ctx: &mut Context) -> Result<(), Error> {
+        assert_eq!(ctx.arg("title"), Some("Developer"));
+        assert_eq!(ctx.flag_str("prefix"), Some("Hello"));
+        assert!(!ctx.flag_bool("loud"));
+        Ok(())
     }
 }
 
@@ -85,9 +81,9 @@ impl Command for AliasedColonCommand {
         &["mkt"]
     }
 
-    fn run<'a>(&'a self, ctx: &'a mut Context) -> CommandFuture<'a> {
+    fn run(&self, ctx: &mut Context) -> Result<(), Error> {
         let _ = ctx;
-        Box::pin(async { Ok(()) })
+        Ok(())
     }
 }
 
@@ -102,9 +98,9 @@ impl Command for BareCommand {
         "Relies on every trait default"
     }
 
-    fn run<'a>(&'a self, ctx: &'a mut Context) -> CommandFuture<'a> {
+    fn run(&self, ctx: &mut Context) -> Result<(), Error> {
         let _ = ctx;
-        Box::pin(async { Ok(()) })
+        Ok(())
     }
 }
 
@@ -119,9 +115,9 @@ impl Command for SucceedsCommand {
         "First registration"
     }
 
-    fn run<'a>(&'a self, ctx: &'a mut Context) -> CommandFuture<'a> {
+    fn run(&self, ctx: &mut Context) -> Result<(), Error> {
         let _ = ctx;
-        Box::pin(async { Ok(()) })
+        Ok(())
     }
 }
 
@@ -136,9 +132,9 @@ impl Command for FailsCommand {
         "Second registration"
     }
 
-    fn run<'a>(&'a self, ctx: &'a mut Context) -> CommandFuture<'a> {
+    fn run(&self, ctx: &mut Context) -> Result<(), Error> {
         let _ = ctx;
-        Box::pin(async { Err(KarigorError::InvalidArgument("second won".to_string())) })
+        Err(Error::InvalidArgument("second won".to_string()))
     }
 }
 
@@ -146,8 +142,8 @@ fn parse_kernel() -> Kernel {
     Kernel::new("test-cli", "CLI Test Suite").register(ParseCommand)
 }
 
-#[tokio::test]
-async fn long_flag_accepts_equals_form() {
+#[test]
+fn long_flag_accepts_equals_form() {
     struct EqualsCommand;
 
     impl Command for EqualsCommand {
@@ -163,11 +159,9 @@ async fn long_flag_accepts_equals_form() {
             vec![Flag::string("prefix", Some('p'), "Prefix", None)]
         }
 
-        fn run<'a>(&'a self, ctx: &'a mut Context) -> CommandFuture<'a> {
-            Box::pin(async move {
-                assert_eq!(ctx.flag_str("prefix"), Some("Welcome"));
-                Ok(())
-            })
+        fn run(&self, ctx: &mut Context) -> Result<(), Error> {
+            assert_eq!(ctx.flag_str("prefix"), Some("Welcome"));
+            Ok(())
         }
     }
 
@@ -178,11 +172,11 @@ async fn long_flag_accepts_equals_form() {
         "--prefix=Welcome".to_string(),
     ];
 
-    assert!(kernel.handle(args).await.is_ok());
+    assert!(kernel.handle(args).is_ok());
 }
 
-#[tokio::test]
-async fn long_flag_accepts_separate_value() {
+#[test]
+fn long_flag_accepts_separate_value() {
     struct SeparateCommand;
 
     impl Command for SeparateCommand {
@@ -198,11 +192,9 @@ async fn long_flag_accepts_separate_value() {
             vec![Flag::string("prefix", Some('p'), "Prefix", None)]
         }
 
-        fn run<'a>(&'a self, ctx: &'a mut Context) -> CommandFuture<'a> {
-            Box::pin(async move {
-                assert_eq!(ctx.flag_str("prefix"), Some("Hello"));
-                Ok(())
-            })
+        fn run(&self, ctx: &mut Context) -> Result<(), Error> {
+            assert_eq!(ctx.flag_str("prefix"), Some("Hello"));
+            Ok(())
         }
     }
 
@@ -214,11 +206,11 @@ async fn long_flag_accepts_separate_value() {
         "Hello".to_string(),
     ];
 
-    assert!(kernel.handle(args).await.is_ok());
+    assert!(kernel.handle(args).is_ok());
 }
 
-#[tokio::test]
-async fn short_flag_accepts_separate_value() {
+#[test]
+fn short_flag_accepts_separate_value() {
     struct ShortCommand;
 
     impl Command for ShortCommand {
@@ -234,11 +226,9 @@ async fn short_flag_accepts_separate_value() {
             vec![Flag::string("prefix", Some('p'), "Prefix", None)]
         }
 
-        fn run<'a>(&'a self, ctx: &'a mut Context) -> CommandFuture<'a> {
-            Box::pin(async move {
-                assert_eq!(ctx.flag_str("prefix"), Some("Hi"));
-                Ok(())
-            })
+        fn run(&self, ctx: &mut Context) -> Result<(), Error> {
+            assert_eq!(ctx.flag_str("prefix"), Some("Hi"));
+            Ok(())
         }
     }
 
@@ -250,11 +240,11 @@ async fn short_flag_accepts_separate_value() {
         "Hi".to_string(),
     ];
 
-    assert!(kernel.handle(args).await.is_ok());
+    assert!(kernel.handle(args).is_ok());
 }
 
-#[tokio::test]
-async fn clustered_short_flags_and_short_string_value() {
+#[test]
+fn clustered_short_flags_and_short_string_value() {
     struct ClusterCommand;
 
     impl Command for ClusterCommand {
@@ -278,14 +268,12 @@ async fn clustered_short_flags_and_short_string_value() {
             ]
         }
 
-        fn run<'a>(&'a self, ctx: &'a mut Context) -> CommandFuture<'a> {
-            Box::pin(async move {
-                assert_eq!(ctx.arg("name"), Some("value"));
-                assert!(ctx.flag_bool("loud"));
-                assert!(ctx.flag_bool("controller"));
-                assert_eq!(ctx.flag_str("prefix"), Some("Hey"));
-                Ok(())
-            })
+        fn run(&self, ctx: &mut Context) -> Result<(), Error> {
+            assert_eq!(ctx.arg("name"), Some("value"));
+            assert!(ctx.flag_bool("loud"));
+            assert!(ctx.flag_bool("controller"));
+            assert_eq!(ctx.flag_str("prefix"), Some("Hey"));
+            Ok(())
         }
     }
 
@@ -299,11 +287,11 @@ async fn clustered_short_flags_and_short_string_value() {
         "Hey".to_string(),
     ];
 
-    assert!(kernel.handle(args).await.is_ok());
+    assert!(kernel.handle(args).is_ok());
 }
 
-#[tokio::test]
-async fn boolean_flag_accepts_explicit_values() {
+#[test]
+fn boolean_flag_accepts_explicit_values() {
     struct ExpectFalseCommand;
 
     impl Command for ExpectFalseCommand {
@@ -319,15 +307,13 @@ async fn boolean_flag_accepts_explicit_values() {
             vec![Flag::boolean("loud", None, "Uppercase")]
         }
 
-        fn run<'a>(&'a self, ctx: &'a mut Context) -> CommandFuture<'a> {
-            Box::pin(async move {
-                if ctx.flag_bool("loud") {
-                    return Err(KarigorError::InvalidArgument(
-                        "expected loud to be false".to_string(),
-                    ));
-                }
-                Ok(())
-            })
+        fn run(&self, ctx: &mut Context) -> Result<(), Error> {
+            if ctx.flag_bool("loud") {
+                return Err(KarigorError::InvalidArgument(
+                    "expected loud to be false".to_string(),
+                ));
+            }
+            Ok(())
         }
     }
 
@@ -338,11 +324,11 @@ async fn boolean_flag_accepts_explicit_values() {
         "--loud=false".to_string(),
     ];
 
-    assert!(kernel.handle(args).await.is_ok());
+    assert!(kernel.handle(args).is_ok());
 }
 
-#[tokio::test]
-async fn malformed_boolean_value_defaults_to_true() {
+#[test]
+fn malformed_boolean_value_defaults_to_true() {
     struct ExpectTrueCommand;
 
     impl Command for ExpectTrueCommand {
@@ -358,15 +344,13 @@ async fn malformed_boolean_value_defaults_to_true() {
             vec![Flag::boolean("loud", None, "Uppercase")]
         }
 
-        fn run<'a>(&'a self, ctx: &'a mut Context) -> CommandFuture<'a> {
-            Box::pin(async move {
-                if !ctx.flag_bool("loud") {
-                    return Err(KarigorError::InvalidArgument(
-                        "expected loud to be true".to_string(),
-                    ));
-                }
-                Ok(())
-            })
+        fn run(&self, ctx: &mut Context) -> Result<(), Error> {
+            if !ctx.flag_bool("loud") {
+                return Err(KarigorError::InvalidArgument(
+                    "expected loud to be true".to_string(),
+                ));
+            }
+            Ok(())
         }
     }
 
@@ -377,11 +361,11 @@ async fn malformed_boolean_value_defaults_to_true() {
         "--loud=garbage".to_string(),
     ];
 
-    assert!(kernel.handle(args).await.is_ok());
+    assert!(kernel.handle(args).is_ok());
 }
 
-#[tokio::test]
-async fn unknown_long_flags_are_captured() {
+#[test]
+fn unknown_long_flags_are_captured() {
     struct UnknownCommand;
 
     impl Command for UnknownCommand {
@@ -393,12 +377,10 @@ async fn unknown_long_flags_are_captured() {
             "Accepts undeclared flags"
         }
 
-        fn run<'a>(&'a self, ctx: &'a mut Context) -> CommandFuture<'a> {
-            Box::pin(async move {
-                assert!(ctx.flag_bool("wat"));
-                assert_eq!(ctx.flag_str("other"), Some("x"));
-                Ok(())
-            })
+        fn run(&self, ctx: &mut Context) -> Result<(), Error> {
+            assert!(ctx.flag_bool("wat"));
+            assert_eq!(ctx.flag_str("other"), Some("x"));
+            Ok(())
         }
     }
 
@@ -410,11 +392,11 @@ async fn unknown_long_flags_are_captured() {
         "--other=x".to_string(),
     ];
 
-    assert!(kernel.handle(args).await.is_ok());
+    assert!(kernel.handle(args).is_ok());
 }
 
-#[tokio::test]
-async fn unknown_short_flags_are_ignored() {
+#[test]
+fn unknown_short_flags_are_ignored() {
     struct IgnoreShortCommand;
 
     impl Command for IgnoreShortCommand {
@@ -430,11 +412,9 @@ async fn unknown_short_flags_are_ignored() {
             vec![Flag::boolean("loud", Some('l'), "Uppercase")]
         }
 
-        fn run<'a>(&'a self, ctx: &'a mut Context) -> CommandFuture<'a> {
-            Box::pin(async move {
-                assert!(ctx.flag_bool("loud"));
-                Ok(())
-            })
+        fn run(&self, ctx: &mut Context) -> Result<(), Error> {
+            assert!(ctx.flag_bool("loud"));
+            Ok(())
         }
     }
 
@@ -445,11 +425,11 @@ async fn unknown_short_flags_are_ignored() {
         "-zl".to_string(),
     ];
 
-    assert!(kernel.handle(args).await.is_ok());
+    assert!(kernel.handle(args).is_ok());
 }
 
-#[tokio::test]
-async fn missing_long_string_value_is_rejected() {
+#[test]
+fn missing_long_string_value_is_rejected() {
     let kernel = parse_kernel();
     let args = vec![
         "test-cli".to_string(),
@@ -458,15 +438,15 @@ async fn missing_long_string_value_is_rejected() {
         "--prefix".to_string(),
     ];
 
-    let err = kernel.handle(args).await.unwrap_err();
+    let err = kernel.handle(args).unwrap_err();
     assert_eq!(
         err.to_string(),
         "Invalid flag: Option `--prefix` requires a value"
     );
 }
 
-#[tokio::test]
-async fn missing_short_string_value_is_rejected() {
+#[test]
+fn missing_short_string_value_is_rejected() {
     let kernel = parse_kernel();
     let args = vec![
         "test-cli".to_string(),
@@ -475,15 +455,15 @@ async fn missing_short_string_value_is_rejected() {
         "-p".to_string(),
     ];
 
-    let err = kernel.handle(args).await.unwrap_err();
+    let err = kernel.handle(args).unwrap_err();
     assert_eq!(
         err.to_string(),
         "Invalid flag: Option `-p` requires a value"
     );
 }
 
-#[tokio::test]
-async fn string_flag_before_another_flag_falls_back_to_default() {
+#[test]
+fn string_flag_before_another_flag_falls_back_to_default() {
     let kernel = Kernel::new("test-cli", "CLI Test Suite").register(DefaultsCommand);
     let args = vec![
         "test-cli".to_string(),
@@ -492,19 +472,19 @@ async fn string_flag_before_another_flag_falls_back_to_default() {
         "--loud".to_string(),
     ];
 
-    assert!(kernel.handle(args).await.is_ok());
+    assert!(kernel.handle(args).is_ok());
 }
 
-#[tokio::test]
-async fn omitted_arguments_and_flags_receive_defaults() {
+#[test]
+fn omitted_arguments_and_flags_receive_defaults() {
     let kernel = Kernel::new("test-cli", "CLI Test Suite").register(DefaultsCommand);
     let args = vec!["test-cli".to_string(), "defaults".to_string()];
 
-    assert!(kernel.handle(args).await.is_ok());
+    assert!(kernel.handle(args).is_ok());
 }
 
-#[tokio::test]
-async fn extra_positional_arguments_are_kept_in_raw_args() {
+#[test]
+fn extra_positional_arguments_are_kept_in_raw_args() {
     struct OneArgCommand;
 
     impl Command for OneArgCommand {
@@ -520,13 +500,11 @@ async fn extra_positional_arguments_are_kept_in_raw_args() {
             vec![Argument::required("name", "Only argument")]
         }
 
-        fn run<'a>(&'a self, ctx: &'a mut Context) -> CommandFuture<'a> {
-            Box::pin(async move {
-                assert_eq!(ctx.arg("name"), Some("first"));
-                assert_eq!(ctx.raw_args.len(), 2);
-                assert_eq!(ctx.raw_args[1], "second");
-                Ok(())
-            })
+        fn run(&self, ctx: &mut Context) -> Result<(), Error> {
+            assert_eq!(ctx.arg("name"), Some("first"));
+            assert_eq!(ctx.raw_args.len(), 2);
+            assert_eq!(ctx.raw_args[1], "second");
+            Ok(())
         }
     }
 
@@ -538,11 +516,11 @@ async fn extra_positional_arguments_are_kept_in_raw_args() {
         "second".to_string(),
     ];
 
-    assert!(kernel.handle(args).await.is_ok());
+    assert!(kernel.handle(args).is_ok());
 }
 
-#[tokio::test]
-async fn positional_arguments_may_follow_flags() {
+#[test]
+fn positional_arguments_may_follow_flags() {
     let kernel = parse_kernel();
     let args = vec![
         "test-cli".to_string(),
@@ -551,19 +529,19 @@ async fn positional_arguments_may_follow_flags() {
         "value".to_string(),
     ];
 
-    assert!(kernel.handle(args).await.is_ok());
+    assert!(kernel.handle(args).is_ok());
 }
 
-#[tokio::test]
-async fn colon_command_alias_resolves() {
+#[test]
+fn colon_command_alias_resolves() {
     let kernel = Kernel::new("test-cli", "CLI Test Suite").register(AliasedColonCommand);
     let args = vec!["test-cli".to_string(), "mkt".to_string()];
 
-    assert!(kernel.handle(args).await.is_ok());
+    assert!(kernel.handle(args).is_ok());
 }
 
-#[tokio::test]
-async fn space_separated_subcommand_normalizes_to_colon_form() {
+#[test]
+fn space_separated_subcommand_normalizes_to_colon_form() {
     let kernel = Kernel::new("test-cli", "CLI Test Suite")
         .group("make", "Scaffolding commands")
         .register(AliasedColonCommand);
@@ -580,11 +558,11 @@ async fn space_separated_subcommand_normalizes_to_colon_form() {
         "make".to_string(),
         "thing".to_string(),
     ];
-    assert!(kernel.handle(args).await.is_ok());
+    assert!(kernel.handle(args).is_ok());
 }
 
-#[tokio::test]
-async fn unregistered_space_pair_is_not_normalized() {
+#[test]
+fn unregistered_space_pair_is_not_normalized() {
     struct MakeOnlyCommand;
 
     impl Command for MakeOnlyCommand {
@@ -596,9 +574,9 @@ async fn unregistered_space_pair_is_not_normalized() {
             "Root make command"
         }
 
-        fn run<'a>(&'a self, ctx: &'a mut Context) -> CommandFuture<'a> {
+        fn run(&self, ctx: &mut Context) -> Result<(), Error> {
             let _ = ctx;
-            Box::pin(async { Ok(()) })
+            Ok(())
         }
     }
 
@@ -612,8 +590,8 @@ async fn unregistered_space_pair_is_not_normalized() {
     assert_eq!(normalized, vec!["make".to_string(), "route".to_string()]);
 }
 
-#[tokio::test]
-async fn normalize_args_strips_program_and_cargo_subcommand() {
+#[test]
+fn normalize_args_strips_program_and_cargo_subcommand() {
     let kernel = Kernel::new("test-cli", "CLI Test Suite");
 
     assert!(kernel.normalize_args(&[]).is_empty());
@@ -635,20 +613,20 @@ async fn normalize_args_strips_program_and_cargo_subcommand() {
     );
 }
 
-#[tokio::test]
-async fn help_and_version_paths_return_ok() {
+#[test]
+fn help_and_version_paths_return_ok() {
     let kernel = parse_kernel();
 
     for token in ["-h", "--help", "help", "-V", "--version", "version"] {
         let args = vec!["test-cli".to_string(), token.to_string()];
-        assert!(kernel.handle(args).await.is_ok(), "token {token} failed");
+        assert!(kernel.handle(args).is_ok(), "token {token} failed");
     }
 
-    assert!(kernel.handle(Vec::new()).await.is_ok());
+    assert!(kernel.handle(Vec::new()).is_ok());
 }
 
-#[tokio::test]
-async fn command_help_takes_precedence_over_validation() {
+#[test]
+fn command_help_takes_precedence_over_validation() {
     let kernel = parse_kernel();
     let args = vec![
         "test-cli".to_string(),
@@ -656,7 +634,7 @@ async fn command_help_takes_precedence_over_validation() {
         "--help".to_string(),
     ];
 
-    assert!(kernel.handle(args).await.is_ok());
+    assert!(kernel.handle(args).is_ok());
 }
 
 #[test]
@@ -677,40 +655,37 @@ fn print_command_help_lists_arguments_and_options() {
     kernel.print_command_help(&BareCommand);
 }
 
-#[tokio::test]
-async fn fuzzy_suggestion_respects_distance_threshold() {
+#[test]
+fn fuzzy_suggestion_respects_distance_threshold() {
     let kernel = Kernel::new("test-cli", "CLI Test Suite").register(BareCommand);
 
     let close = kernel
         .handle(vec!["test-cli".to_string(), "baer".to_string()])
-        .await
         .unwrap_err();
     assert!(close.to_string().contains("Did you mean `bare`?"));
 
     let far = kernel
         .handle(vec!["test-cli".to_string(), "zzzzzz".to_string()])
-        .await
         .unwrap_err();
     assert!(far.to_string().contains("Unknown command `zzzzzz`"));
     assert!(!far.to_string().contains("Did you mean"));
 }
 
-#[tokio::test]
-async fn later_registration_wins_for_duplicate_names() {
+#[test]
+fn later_registration_wins_for_duplicate_names() {
     let kernel = Kernel::new("test-cli", "CLI Test Suite")
         .register(SucceedsCommand)
         .register(FailsCommand);
 
     let err = kernel
         .handle(vec!["test-cli".to_string(), "duplicate".to_string()])
-        .await
         .unwrap_err();
 
     assert!(err.to_string().contains("second won"));
 }
 
-#[tokio::test]
-async fn command_errors_propagate_out_of_handle() {
+#[test]
+fn command_errors_propagate_out_of_handle() {
     struct ErrorCommand;
 
     impl Command for ErrorCommand {
@@ -722,16 +697,15 @@ async fn command_errors_propagate_out_of_handle() {
             "Always errors"
         }
 
-        fn run<'a>(&'a self, ctx: &'a mut Context) -> CommandFuture<'a> {
+        fn run(&self, ctx: &mut Context) -> Result<(), Error> {
             let _ = ctx;
-            Box::pin(async { Err(KarigorError::InvalidFlag("bad".to_string())) })
+            Err(Error::InvalidFlag("bad".to_string()))
         }
     }
 
     let kernel = Kernel::new("test-cli", "CLI Test Suite").register(ErrorCommand);
     let err = kernel
         .handle(vec!["test-cli".to_string(), "error".to_string()])
-        .await
         .unwrap_err();
 
     assert_eq!(err.to_string(), "Invalid flag: bad");
@@ -758,8 +732,8 @@ fn context_accessors_report_missing_and_mismatched_values() {
     assert_eq!(context.flag_str("loud"), None);
     assert_eq!(context.flag_str("missing"), None);
 }
-#[tokio::test]
-async fn short_string_flag_before_another_flag_falls_back_to_default() {
+#[test]
+fn short_string_flag_before_another_flag_falls_back_to_default() {
     struct ShortDefaultCommand;
 
     impl Command for ShortDefaultCommand {
@@ -783,12 +757,10 @@ async fn short_string_flag_before_another_flag_falls_back_to_default() {
             ]
         }
 
-        fn run<'a>(&'a self, ctx: &'a mut Context) -> CommandFuture<'a> {
-            Box::pin(async move {
-                assert_eq!(ctx.flag_str("prefix"), Some("Hello"));
-                assert!(!ctx.flag_bool("loud"));
-                Ok(())
-            })
+        fn run(&self, ctx: &mut Context) -> Result<(), Error> {
+            assert_eq!(ctx.flag_str("prefix"), Some("Hello"));
+            assert!(!ctx.flag_bool("loud"));
+            Ok(())
         }
     }
 
@@ -800,11 +772,11 @@ async fn short_string_flag_before_another_flag_falls_back_to_default() {
         "-l".to_string(),
     ];
 
-    assert!(kernel.handle(args).await.is_ok());
+    assert!(kernel.handle(args).is_ok());
 }
 
-#[tokio::test]
-async fn missing_required_argument_is_rejected() {
+#[test]
+fn missing_required_argument_is_rejected() {
     struct RequiredArgCommand;
 
     impl Command for RequiredArgCommand {
@@ -820,16 +792,15 @@ async fn missing_required_argument_is_rejected() {
             vec![Argument::required("name", "Name to greet")]
         }
 
-        fn run<'a>(&'a self, ctx: &'a mut Context) -> CommandFuture<'a> {
+        fn run(&self, ctx: &mut Context) -> Result<(), Error> {
             let _ = ctx;
-            Box::pin(async { Ok(()) })
+            Ok(())
         }
     }
 
     let kernel = Kernel::new("test-cli", "CLI Test Suite").register(RequiredArgCommand);
     let err = kernel
         .handle(vec!["test-cli".to_string(), "required".to_string()])
-        .await
         .unwrap_err();
 
     assert_eq!(
@@ -838,10 +809,10 @@ async fn missing_required_argument_is_rejected() {
     );
 }
 
-#[tokio::test]
-async fn handle_env_delegates_to_the_process_arguments() {
+#[test]
+fn handle_env_delegates_to_the_process_arguments() {
     // The test harness owns the real process arguments, so the only stable
     // expectation is that the delegation completes and returns a result.
     let kernel = parse_kernel();
-    let _ = kernel.handle_env().await;
+    let _ = kernel.handle_env();
 }

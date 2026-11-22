@@ -20,8 +20,8 @@ fn banner_handles_wide_and_unicode_titles_without_panicking() {
 fn banner_and_instruction_lines_have_identical_visible_widths() {
     let ui = Ui::buffered();
     ui.banner(
-        "Druto Scaffolding Wizard",
-        "Generate a new Druto web application",
+        "Application Scaffolding Wizard",
+        "Generate a new application",
     );
     let output = ui.output_string().expect("buffer should contain banner");
     let lines: Vec<&str> = output.lines().filter(|line| !line.is_empty()).collect();
@@ -152,9 +152,9 @@ fn default_ui_is_not_quiet() {
 }
 
 #[test]
-fn prompts_return_an_error_when_no_terminal_is_available() {
-    // `dialoguer` checks the terminal before reading, so this cannot block when
-    // stderr is not a TTY. Skip when the suite runs attached to a real terminal.
+fn prompts_behavior_when_no_terminal_is_available() {
+    // When stderr or stdin is not a TTY, prompts without fallback defaults fail fast
+    // while prompts with configured defaults resolve gracefully.
     if std::io::stderr().is_terminal() {
         return;
     }
@@ -162,11 +162,20 @@ fn prompts_return_an_error_when_no_terminal_is_available() {
     let ui = Ui::new();
 
     assert!(ui.input("Name?", None).is_err());
-    assert!(ui.input("Name?", Some("Default")).is_err());
-    assert!(ui.confirm("Continue?", true).is_err());
-    assert!(ui.select("Pick", &["one", "two"], 0).is_err());
+    assert_eq!(
+        ui.input("Name?", Some("Default")).unwrap(),
+        "Default".to_string()
+    );
+    assert!(ui.confirm("Continue?", true).unwrap());
+    assert_eq!(ui.select("Pick", &["one", "two"], 0).unwrap(), 0);
+    assert!(ui.password("Secret").is_err());
 
     assert!(ui::prompt_input("Name?", None).is_err());
-    assert!(ui::prompt_confirm("Continue?", false).is_err());
-    assert!(ui::prompt_select("Pick", &["one", "two"], 1).is_err());
+    assert_eq!(
+        ui::prompt_input("Name?", Some("Default")).unwrap(),
+        "Default".to_string()
+    );
+    assert!(!ui::prompt_confirm("Continue?", false).unwrap());
+    assert_eq!(ui::prompt_select("Pick", &["one", "two"], 1).unwrap(), 1);
+    assert!(ui::prompt_password("Secret").is_err());
 }

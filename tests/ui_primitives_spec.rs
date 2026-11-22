@@ -83,6 +83,34 @@ fn ansi_color_and_style_generation() {
     assert_eq!(styled.as_str(), "full");
     assert!(!styled.to_string().is_empty());
 
+    let str_styled = "test".italic().underline().on_color(Color::Blue);
+    assert_eq!(&*str_styled, "test");
+    assert!(!str_styled.to_string().is_empty());
+
+    for color in [
+        Color::Black,
+        Color::Red,
+        Color::Green,
+        Color::Yellow,
+        Color::Blue,
+        Color::Magenta,
+        Color::Cyan,
+        Color::White,
+        Color::BrightBlack,
+        Color::BrightRed,
+        Color::BrightGreen,
+        Color::BrightYellow,
+        Color::BrightBlue,
+        Color::BrightMagenta,
+        Color::BrightCyan,
+        Color::BrightWhite,
+    ] {
+        let fg = "c".color(color).to_string();
+        let bg = "c".on_color(color).to_string();
+        assert!(!fg.is_empty());
+        assert!(!bg.is_empty());
+    }
+
     set_color_enabled(false);
     let plain = "error".red().bold().to_string();
     assert_eq!(plain, "error");
@@ -100,6 +128,9 @@ fn strip_ansi_and_visible_width_calculation() {
     let cjk = "করিগর";
     assert_eq!(strip_ansi(cjk), "করিগর");
     assert_eq!(visible_width(cjk), 5);
+
+    let wide_japanese = "こんにちは";
+    assert_eq!(visible_width(wide_japanese), 10);
 
     let ctrl = "\tHello\r\n";
     assert_eq!(visible_width(ctrl), 5);
@@ -535,6 +566,10 @@ fn context_prompt_methods_and_ui_http_helpers() {
     let presets = ["REST API", "Full-Stack"];
     let select_idx = ctx.select("Preset", &presets, 1).unwrap();
     assert_eq!(select_idx, 1);
+
+    assert!(ctx.password("Secret").is_err());
+    let chosen = ctx.multiselect("Pick", &presets, &[0]).unwrap();
+    assert_eq!(chosen, vec![0]);
 
     // UI HTTP helpers
     let cell = ui.cell_http_method("GET");

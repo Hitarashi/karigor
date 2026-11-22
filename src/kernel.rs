@@ -3,13 +3,15 @@
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{
-    command::{Command, Context, Flag, FlagType, FlagValue},
-    error::KarigorError,
+    command::{Command, CommandBuilder, Context, Flag, FlagType, FlagValue},
+    error::Error,
     ui::{
-        Ui,
+        Alert, AlertKind, Ui,
         ansi::{ColorizeExt, set_color_enabled},
     },
 };
+
+type DispatchTarget = (Arc<dyn Command>, Context);
 
 fn levenshtein(first: &str, second: &str) -> usize {
     let first_chars: Vec<char> = first.chars().collect();
@@ -100,10 +102,88 @@ impl Kernel {
         self
     }
 
-    /// Executes command dispatch against the process environment arguments.
-    pub async fn handle_env(&self) -> Result<(), KarigorError> {
+    /// Registers a closure-defined command into the kernel.
+    #[must_use]
+    pub fn command<F>(self, name: &'static str, description: &'static str, configure: F) -> Self
+    where
+        F: FnOnce(CommandBuilder) -> CommandBuilder,
+    {
+        let builder = CommandBuilder::new(name, description);
+        let configured = configure(builder);
+        self.register(configured)
+    }
+
+    /// Dispatches execution to the appropriate command synchronously based on input arguments.
+    pub fn handle(&self, raw_args: Vec<String>) -> Result<(), Error> {
+        match self.prepare_dispatch(&raw_args)? {
+            Some((command, mut context)) => command.run(&mut context),
+            None => Ok(()),
+        }
+    }
+
+    /// Executes synchronous command dispatch against the process environment arguments.
+    pub fn handle_env(&self) -> Result<(), Error> {
         let raw_args: Vec<String> = std::env::args().collect();
-        self.handle(raw_args).await
+        self.handle(raw_args)
+    }
+
+    /// Dispatches execution and maps the result to a standard process exit code.
+    ///
+    /// Returns `0` on successful command completion. On error, outputs an alert to stderr
+    /// and returns the appropriate exit code (`1` for runtime error, `2` for syntax/argument error).
+    #[must_use]
+    pub fn execute(&self, raw_args: Vec<String>) -> i32 {
+        match self.handle(raw_args) {
+            Ok(()) => 0,
+            Err(err) => {
+                let code = err.exit_code();
+                self.render_dispatch_error(&err);
+                code
+            }
+        }
+    }
+
+    /// Dispatches execution from standard environment arguments and maps to an exit code.
+    #[must_use]
+    pub fn execute_env(&self) -> i32 {
+        let raw_args: Vec<String> = std::env::args().collect();
+        self.execute(raw_args)
+    }
+
+    #[cfg(feature = "async")]
+    /// Dispatches execution to the appropriate command asynchronously based on input arguments.
+    pub async fn handle_async(&self, raw_args: Vec<String>) -> Result<(), Error> {
+        match self.prepare_dispatch(&raw_args)? {
+            Some((command, mut context)) => command.run_async(&mut context).await,
+            None => Ok(()),
+        }
+    }
+
+    #[cfg(feature = "async")]
+    /// Executes asynchronous command dispatch against the process environment arguments.
+    pub async fn handle_env_async(&self) -> Result<(), Error> {
+        let raw_args: Vec<String> = std::env::args().collect();
+        self.handle_async(raw_args).await
+    }
+
+    #[cfg(feature = "async")]
+    /// Dispatches asynchronous execution and maps the result to a standard process exit code.
+    pub async fn execute_async(&self, raw_args: Vec<String>) -> i32 {
+        match self.handle_async(raw_args).await {
+            Ok(()) => 0,
+            Err(err) => {
+                let code = err.exit_code();
+                self.render_dispatch_error(&err);
+                code
+            }
+        }
+    }
+
+    #[cfg(feature = "async")]
+    /// Dispatches asynchronous execution from environment arguments and maps to an exit code.
+    pub async fn execute_env_async(&self) -> i32 {
+        let raw_args: Vec<String> = std::env::args().collect();
+        self.execute_async(raw_args).await
     }
 
     /// Normalizes incoming command line tokens, handling binary prefixes and colon namespaces.
@@ -143,11 +223,10 @@ impl Kernel {
         tokens
     }
 
-    /// Dispatches execution to the appropriate command based on input arguments.
-    pub async fn handle(&self, raw_args: Vec<String>) -> Result<(), KarigorError> {
-        let mut tokens = self.normalize_args(&raw_args);
+    fn prepare_dispatch(&self, raw_args: &[String]) -> Result<Option<DispatchTarget>, Error> {
+        let mut tokens = self.normalize_args(raw_args);
 
-        // Check global flags: --no-ansi, -q, --quiet
+        // Check global flags: --no-ansi, -q, --quiet, -n, --no-interaction
         let mut quiet = false;
         let mut index = 0;
         while index < tokens.len() {
@@ -157,6 +236,9 @@ impl Kernel {
             } else if tokens[index] == "-q" || tokens[index] == "--quiet" {
                 quiet = true;
                 tokens.remove(index);
+            } else if tokens[index] == "-n" || tokens[index] == "--no-interaction" {
+                crate::ui::prompt::set_non_interactive(true);
+                tokens.remove(index);
             } else {
                 index += 1;
             }
@@ -164,14 +246,14 @@ impl Kernel {
 
         if tokens.is_empty() || tokens[0] == "-h" || tokens[0] == "--help" || tokens[0] == "help" {
             self.print_help();
-            return Ok(());
+            return Ok(None);
         }
 
         if tokens[0] == "-V" || tokens[0] == "--version" || tokens[0] == "version" {
             self.ui
                 .writer()
                 .print(&format!("{} {}", self.name.bold().cyan(), self.version));
-            return Ok(());
+            return Ok(None);
         }
 
         let requested_name = &tokens[0];
@@ -185,7 +267,7 @@ impl Kernel {
             Some(cmd) => Arc::clone(cmd),
             None => {
                 let suggestion = self.find_closest_match(requested_name);
-                return Err(KarigorError::CommandNotFound {
+                return Err(Error::CommandNotFound {
                     name: requested_name.clone(),
                     suggestion,
                 });
@@ -193,9 +275,12 @@ impl Kernel {
         };
 
         // Check if command-specific help is requested
-        if tokens.iter().any(|t| t == "--help" || t == "-h") {
+        if tokens
+            .iter()
+            .any(|token| token == "--help" || token == "-h")
+        {
             self.print_command_help(command.as_ref());
-            return Ok(());
+            return Ok(None);
         }
 
         let mut ui_instance = self.ui.clone();
@@ -204,9 +289,28 @@ impl Kernel {
         }
 
         let context = self.parse_command_context(command.as_ref(), &tokens[1..], ui_instance)?;
-        let mut mutable_context = context;
+        Ok(Some((command, context)))
+    }
 
-        command.run(&mut mutable_context).await
+    fn render_dispatch_error(&self, err: &Error) {
+        let mut alert = Alert::new(AlertKind::Danger, "Command Execution Failed");
+        alert.message(err.to_string());
+        match err {
+            Error::CommandNotFound {
+                suggestion: Some(alt),
+                ..
+            } => {
+                alert.suggestion(format!("Did you mean `{alt}`?"));
+            }
+            Error::InvalidArgument(_) => {
+                alert.suggestion("Pass `--help` to inspect required arguments.");
+            }
+            Error::InvalidFlag(_) => {
+                alert.suggestion("Pass `--help` to view valid options and syntax.");
+            }
+            _ => {}
+        }
+        self.ui.writer().print_err(&alert.prepare());
     }
 
     fn find_closest_match(&self, input: &str) -> Option<String> {
@@ -229,7 +333,7 @@ impl Kernel {
         command: &dyn Command,
         args_slice: &[String],
         ui_instance: Ui,
-    ) -> Result<Context, KarigorError> {
+    ) -> Result<Context, Error> {
         let declared_args = command.arguments();
         let declared_flags = command.flags();
 
@@ -294,7 +398,7 @@ impl Kernel {
                                 parsed_flags
                                     .insert(flag.name.clone(), FlagValue::Str(default.clone()));
                             } else {
-                                return Err(KarigorError::InvalidFlag(format!(
+                                return Err(Error::InvalidFlag(format!(
                                     "Option `--{}` requires a value",
                                     flag.name
                                 )));
@@ -315,7 +419,7 @@ impl Kernel {
                                     }
                                 }
                             } else {
-                                return Err(KarigorError::InvalidFlag(format!(
+                                return Err(Error::InvalidFlag(format!(
                                     "Option `--{}` requires a value",
                                     flag.name
                                 )));
@@ -351,7 +455,7 @@ impl Kernel {
                                     parsed_flags
                                         .insert(flag.name.clone(), FlagValue::Str(default.clone()));
                                 } else {
-                                    return Err(KarigorError::InvalidFlag(format!(
+                                    return Err(Error::InvalidFlag(format!(
                                         "Option `-{}` requires a value",
                                         ch
                                     )));
@@ -374,7 +478,7 @@ impl Kernel {
                                         }
                                     }
                                 } else {
-                                    return Err(KarigorError::InvalidFlag(format!(
+                                    return Err(Error::InvalidFlag(format!(
                                         "Option `-{}` requires a value",
                                         ch
                                     )));
@@ -400,7 +504,7 @@ impl Kernel {
                 } else if flag.flag_type == FlagType::Array {
                     parsed_flags.insert(flag.name.clone(), FlagValue::Array(Vec::new()));
                 } else if flag.required {
-                    return Err(KarigorError::InvalidFlag(format!(
+                    return Err(Error::InvalidFlag(format!(
                         "Missing required option `--{}`",
                         flag.name
                     )));
@@ -430,7 +534,7 @@ impl Kernel {
             } else if let Some(ref default) = arg_spec.default {
                 parsed_args.insert(arg_spec.name.clone(), default.clone());
             } else if arg_spec.required {
-                return Err(KarigorError::InvalidArgument(format!(
+                return Err(Error::InvalidArgument(format!(
                     "Missing required argument `{}`",
                     arg_spec.name
                 )));
@@ -446,9 +550,9 @@ impl Kernel {
         })
     }
 
-    fn validate_flag_choice(&self, flag: &Flag, value: &str) -> Result<(), KarigorError> {
+    fn validate_flag_choice(&self, flag: &Flag, value: &str) -> Result<(), Error> {
         if !flag.choices.is_empty() && !flag.choices.iter().any(|c| c == value) {
-            return Err(KarigorError::InvalidFlag(format!(
+            return Err(Error::InvalidFlag(format!(
                 "Invalid value `{value}` for option `--{}`. Allowed values: [{}]",
                 flag.name,
                 flag.choices.join(", ")
@@ -488,6 +592,10 @@ impl Kernel {
         writer.print(&format!(
             "  {:20} Suppress non-critical output",
             "-q, --quiet".cyan()
+        ));
+        writer.print(&format!(
+            "  {:20} Do not ask any interactive question",
+            "-n, --no-interaction".cyan()
         ));
         writer.print(&format!(
             "  {:20} Disable colored output",

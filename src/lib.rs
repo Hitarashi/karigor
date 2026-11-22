@@ -14,23 +14,28 @@ pub mod template;
 pub mod ui;
 
 pub use borno::StrExt;
-pub use command::{Argument, Command, CommandFuture, Context, Flag, FlagType, FlagValue};
-pub use error::KarigorError;
+#[cfg(feature = "async")]
+pub use command::CommandFuture;
+pub use command::{Argument, Command, CommandBuilder, Context, Flag, FlagType, FlagValue};
+pub use error::{Error, KarigorError};
 pub use kernel::Kernel;
 pub use template::{publish_files, render as render_template};
 pub use ui::{
-    Action, Alignment, Attribute, Cell, Color, Colorize, ColorizeExt, ContentArrangement,
-    DefinitionList, Instruction, ProgressBar, ProgressStyle, Steps, Table, TablePreset, Ui,
+    Action, Alert, AlertKind, Alignment, Attribute, Cell, Color, Colorize, ColorizeExt,
+    ContentArrangement, DefinitionList, Instruction, ProgressBar, ProgressStyle, Steps, Sticker,
+    Table, TablePreset, Ui,
 };
 
 /// Essential types and traits for building command-line applications.
 pub mod prelude {
     pub use borno::StrExt;
 
+    #[cfg(feature = "async")]
+    pub use crate::CommandFuture;
     pub use crate::{
-        Action, Alignment, Argument, Attribute, Cell, Color, Colorize, ColorizeExt, Command,
-        CommandFuture, ContentArrangement, Context, DefinitionList, Flag, FlagType, FlagValue,
-        Instruction, KarigorError, Kernel, ProgressBar, ProgressStyle, Steps, Table, TablePreset,
-        Ui,
+        Action, Alert, AlertKind, Alignment, Argument, Attribute, Cell, Color, Colorize,
+        ColorizeExt, Command, CommandBuilder, ContentArrangement, Context, DefinitionList, Error,
+        Flag, FlagType, FlagValue, Instruction, KarigorError, Kernel, ProgressBar, ProgressStyle,
+        Steps, Sticker, Table, TablePreset, Ui,
     };
 }

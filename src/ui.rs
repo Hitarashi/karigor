@@ -1,18 +1,21 @@
 //! Terminal UI design system, presentation primitives, and interactive prompts for Karigor.
 
 pub mod action;
+pub mod alert;
 pub mod ansi;
 pub mod instruction;
 pub mod key_value;
 pub mod prompt;
 pub mod spinner;
 pub mod steps;
+pub mod sticker;
 pub mod table;
 pub mod writer;
 
 use std::sync::{Arc, Mutex};
 
 pub use action::Action;
+pub use alert::{Alert, AlertKind};
 pub use ansi::{
     Color, Colorize, ColorizeExt, StyledText, is_color_enabled, reset_color_override,
     set_color_enabled, strip_ansi, visible_width,
@@ -21,10 +24,12 @@ pub use instruction::Instruction;
 pub use key_value::DefinitionList;
 pub use prompt::{
     MockPromptBackend, PromptBackend, PromptHandler, TerminalPromptBackend, is_non_interactive,
-    prompt_confirm_stream, prompt_input_stream, prompt_select_stream, set_non_interactive,
+    prompt_confirm_stream, prompt_input_stream, prompt_multiselect_stream, prompt_password_stream,
+    prompt_select_stream, set_non_interactive,
 };
 pub use spinner::{ProgressBar, ProgressStyle};
 pub use steps::Steps;
+pub use sticker::Sticker;
 pub use table::{Alignment, Attribute, Cell, ContentArrangement, Table, TablePreset, presets};
 pub use writer::UiWriter;
 
@@ -136,6 +141,38 @@ pub fn prompt_select<T: ToString + std::fmt::Display>(
     default: usize,
 ) -> Result<usize, std::io::Error> {
     PromptHandler::terminal().select(prompt, items, default)
+}
+
+/// Prompts the user for a masked or silent password.
+pub fn prompt_password(prompt: &str) -> Result<String, std::io::Error> {
+    PromptHandler::terminal().password(prompt)
+}
+
+/// Prompts the user to select multiple items from a list.
+pub fn prompt_multiselect<T: ToString + std::fmt::Display>(
+    prompt: &str,
+    items: &[T],
+    defaults: &[usize],
+) -> Result<Vec<usize>, std::io::Error> {
+    PromptHandler::terminal().multiselect(prompt, items, defaults)
+}
+
+/// Formats and prints a rectangular status card.
+pub fn print_sticker(title: &str, lines: &[&str]) {
+    let ui = Ui::new();
+    ui.render_sticker(title, |sticker| {
+        for &line in lines {
+            sticker.line(line);
+        }
+    });
+}
+
+/// Formats and prints an alert notification.
+pub fn print_alert(kind: AlertKind, title: &str, message: &str) {
+    let ui = Ui::new();
+    ui.render_alert(kind, title, |alert| {
+        alert.message(message);
+    });
 }
 
 /// Interactive terminal UI manager.
@@ -363,6 +400,90 @@ impl Ui {
         default: usize,
     ) -> Result<usize, std::io::Error> {
         self.prompts.select(prompt, items, default)
+    }
+
+    /// Prompts the user for a masked or silent password.
+    pub fn password(&self, prompt: &str) -> Result<String, std::io::Error> {
+        self.prompts.password(prompt)
+    }
+
+    /// Prompts the user to select multiple items from a list.
+    pub fn multiselect<T: ToString + std::fmt::Display>(
+        &self,
+        prompt: &str,
+        items: &[T],
+        defaults: &[usize],
+    ) -> Result<Vec<usize>, std::io::Error> {
+        self.prompts.multiselect(prompt, items, defaults)
+    }
+
+    /// Creates a bordered sticker card builder.
+    #[must_use]
+    pub fn sticker(&self) -> Sticker {
+        Sticker::new()
+    }
+
+    /// Configures and renders a sticker card via a scoped closure.
+    pub fn render_sticker<F>(&self, title: impl Into<String>, configure: F)
+    where
+        F: FnOnce(&mut Sticker),
+    {
+        if !self.quiet {
+            let mut sticker = Sticker::new();
+            sticker.title(title);
+            configure(&mut sticker);
+            sticker.render(self);
+        }
+    }
+
+    /// Creates an alert container builder.
+    #[must_use]
+    pub fn alert(&self, kind: AlertKind, title: impl Into<String>) -> Alert {
+        Alert::new(kind, title)
+    }
+
+    /// Configures and renders an alert container via a scoped closure.
+    pub fn render_alert<F>(&self, kind: AlertKind, title: impl Into<String>, configure: F)
+    where
+        F: FnOnce(&mut Alert),
+    {
+        if !self.quiet {
+            let mut alert = Alert::new(kind, title);
+            configure(&mut alert);
+            alert.render(self);
+        }
+    }
+
+    /// Configures and renders an informational alert via a scoped closure.
+    pub fn alert_info<F>(&self, title: impl Into<String>, configure: F)
+    where
+        F: FnOnce(&mut Alert),
+    {
+        self.render_alert(AlertKind::Info, title, configure);
+    }
+
+    /// Configures and renders a success alert via a scoped closure.
+    pub fn alert_success<F>(&self, title: impl Into<String>, configure: F)
+    where
+        F: FnOnce(&mut Alert),
+    {
+        self.render_alert(AlertKind::Success, title, configure);
+    }
+
+    /// Configures and renders a warning alert via a scoped closure.
+    pub fn alert_warning<F>(&self, title: impl Into<String>, configure: F)
+    where
+        F: FnOnce(&mut Alert),
+    {
+        self.render_alert(AlertKind::Warning, title, configure);
+    }
+
+    /// Configures and renders a danger alert via a scoped closure.
+    pub fn alert_danger<F>(&self, title: impl Into<String>, configure: F)
+    where
+        F: FnOnce(&mut Alert),
+    {
+        self.render_alert(AlertKind::Danger, title, configure);
     }
 
     /// Formats an HTTP method cell badge for display in tables.

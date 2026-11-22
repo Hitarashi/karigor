@@ -1,59 +1,74 @@
-# Karigor (`karigor`)
+# Karigor (কারিগর)
 
 Framework-agnostic, developer-friendly CLI application builder and terminal UI toolkit for Rust.
 
 ## Features
 
-- **Declarative Kernel Dispatcher**: Register commands and groups with support for nested/colon subcommands (`make:route` ↔ `make route`).
-- **Fuzzy Command Matching**: Automatically suggests closest matching commands on typo inputs with Levenshtein distance.
-- **Beautiful Terminal UI**: Pre-styled rounded tables, colored banners, section badges, and status logs.
-- **Interactive Prompts**: Text input with defaults, yes/no confirmation prompts, and single-selection lists powered by `dialoguer`.
-- **Steady Progress Indicators**: Elegant terminal spinners and progress bars powered by `indicatif`.
-- **Template Code Generator**: Built-in template rendering and file ejection powered by `minijinja`.
+- **Runtime-Agnostic & Synchronous by Default**: Zero async runtime dependencies in core; executes directly in `fn main() -> std::process::ExitCode`.
+- **Declarative & Closure Commands**: Define commands with structured traits, fluent `CommandBuilder`, or ergonomic scoped closures (`kernel.command(...)`).
+- **Standard Exit Codes & Safety**: Built-in POSIX/BSD exit code mappings (`0` for success, `2` for syntax/flag errors, `1` for execution failures) with formatted error alerts on `kernel.execute(...)`.
+- **Terminal UI Components**: Pre-styled rounded tables, colored banners, information stickers, severity alerts (`AlertKind::{Info, Success, Warning, Danger}`), and section badges.
+- **Interactive Security Prompts**: Text input with defaults, yes/no confirmations, numeric/token multiselect, and silent password keystroke suppression with non-interactive CI/headless detection.
+- **Progress Indicators**: Terminal spinners and progress bars following terminal capabilities and `--quiet` flags.
+- **Template Code Generator**: Built-in template rendering and file publication utilities powered by MiniJinja.
 
 ## Quick Start
+
+### Synchronous Closure Commands (Default)
 
 ```rust
 use karigor::prelude::*;
 
-struct BuildCommand;
-
-impl Command for BuildCommand {
-    fn name(&self) -> &'static str {
-        "build"
-    }
-
-    fn description(&self) -> &'static str {
-        "Compile and build project artifacts"
-    }
-
-    fn flags(&self) -> Vec<Flag> {
-        vec![Flag::boolean("release", Some('r'), "Build in release mode")]
-    }
-
-    fn run<'a>(&'a self, ctx: &'a mut Context) -> CommandFuture<'a> {
-        Box::pin(async move {
-            let release = ctx.flag_bool("release");
-            ctx.ui.section("Build Pipeline");
-            if release {
-                ctx.ui.info("Compiling with release optimizations...");
-            } else {
-                ctx.ui.info("Compiling in debug mode...");
-            }
-            ctx.ui.success("Artifacts generated successfully!");
-            Ok(())
-        })
-    }
-}
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> std::process::ExitCode {
     let kernel = Kernel::new("my-cli", "Developer Tool Suite")
         .version("0.1.0")
-        .register(BuildCommand);
+        .command("build", "Compile and build project artifacts", |cmd| {
+            cmd.flag(Flag::boolean("release", Some('r'), "Build in release mode"))
+                .argument(Argument::optional("target", "Target architecture", None))
+                .handle(|ctx| {
+                    let release = ctx.flag_bool("release");
+                    let target = ctx.arg("target").unwrap_or("native");
 
-    kernel.handle_env().await?;
-    Ok(())
+                    ctx.ui.render_sticker("Build Pipeline", |s| {
+                        s.line(&format!("Target: {target}"))
+                            .line(&format!("Optimized: {release}"));
+                    });
+
+                    ctx.ui.success("Artifacts generated successfully!");
+                    Ok(())
+                })
+        });
+
+    let exit_code = kernel.execute_env();
+    std::process::ExitCode::from(exit_code as u8)
+}
+```
+
+### Struct-Based Command
+
+```rust
+use karigor::prelude::*;
+
+struct GreetCommand;
+
+impl Command for GreetCommand {
+    fn name(&self) -> &str {
+        "greet"
+    }
+
+    fn description(&self) -> &str {
+        "Greets a user"
+    }
+
+    fn arguments(&self) -> Vec<Argument> {
+        vec![Argument::required("name", "Name of user to greet")]
+    }
+
+    fn run(&self, ctx: &mut Context) -> Result<(), Error> {
+        let name = ctx.arg("name").unwrap_or("developer");
+        ctx.ui.success(&format!("Hello, {name}!"));
+        Ok(())
+    }
 }
 ```
 

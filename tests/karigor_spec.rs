@@ -37,22 +37,20 @@ impl Command for GreetCommand {
         ]
     }
 
-    fn run<'a>(&'a self, ctx: &'a mut Context) -> CommandFuture<'a> {
-        Box::pin(async move {
-            let name = ctx.arg("name").unwrap();
-            let title = ctx.arg("title").unwrap();
-            let loud = ctx.flag_bool("loud");
-            let prefix = ctx.flag_str("prefix").unwrap();
+    fn run(&self, ctx: &mut Context) -> Result<(), Error> {
+        let name = ctx.arg("name").unwrap();
+        let title = ctx.arg("title").unwrap();
+        let loud = ctx.flag_bool("loud");
+        let prefix = ctx.flag_str("prefix").unwrap();
 
-            let message = format!("{prefix}, {title} {name}!");
-            if loud {
-                ctx.ui.success(&message.to_uppercase());
-            } else {
-                ctx.ui.success(&message);
-            }
+        let message = format!("{prefix}, {title} {name}!");
+        if loud {
+            ctx.ui.success(&message.to_uppercase());
+        } else {
+            ctx.ui.success(&message);
+        }
 
-            Ok(())
-        })
+        Ok(())
     }
 }
 
@@ -81,18 +79,16 @@ impl Command for MakeRouteCommand {
         )]
     }
 
-    fn run<'a>(&'a self, ctx: &'a mut Context) -> CommandFuture<'a> {
-        Box::pin(async move {
-            assert_eq!(ctx.arg("name"), Some("user"));
-            assert!(ctx.flag_bool("controller"));
-            MAKE_ROUTE_EXECUTED.store(true, Ordering::SeqCst);
-            Ok(())
-        })
+    fn run(&self, ctx: &mut Context) -> Result<(), Error> {
+        assert_eq!(ctx.arg("name"), Some("user"));
+        assert!(ctx.flag_bool("controller"));
+        MAKE_ROUTE_EXECUTED.store(true, Ordering::SeqCst);
+        Ok(())
     }
 }
 
-#[tokio::test]
-async fn test_kernel_command_execution() {
+#[test]
+fn test_kernel_command_execution() {
     let kernel = Kernel::new("test-cli", "CLI Test Suite")
         .version("1.0.0")
         .register(GreetCommand);
@@ -105,12 +101,12 @@ async fn test_kernel_command_execution() {
         "--prefix=Welcome".to_string(),
     ];
 
-    let result = kernel.handle(args).await;
+    let result = kernel.handle(args);
     assert!(result.is_ok());
 }
 
-#[tokio::test]
-async fn test_kernel_alias_resolution() {
+#[test]
+fn test_kernel_alias_resolution() {
     let kernel = Kernel::new("test-cli", "CLI Test Suite").register(GreetCommand);
 
     let args = vec![
@@ -119,12 +115,12 @@ async fn test_kernel_alias_resolution() {
         "Sayeed".to_string(),
     ];
 
-    let result = kernel.handle(args).await;
+    let result = kernel.handle(args);
     assert!(result.is_ok());
 }
 
-#[tokio::test]
-async fn test_kernel_colon_subcommand_normalization() {
+#[test]
+fn test_kernel_colon_subcommand_normalization() {
     MAKE_ROUTE_EXECUTED.store(false, Ordering::SeqCst);
 
     let kernel = Kernel::new("test-cli", "CLI Test Suite")
@@ -138,7 +134,7 @@ async fn test_kernel_colon_subcommand_normalization() {
         "user".to_string(),
         "--controller".to_string(),
     ];
-    assert!(kernel.handle(args_colon).await.is_ok());
+    assert!(kernel.handle(args_colon).is_ok());
     assert!(MAKE_ROUTE_EXECUTED.load(Ordering::SeqCst));
 
     MAKE_ROUTE_EXECUTED.store(false, Ordering::SeqCst);
@@ -151,17 +147,17 @@ async fn test_kernel_colon_subcommand_normalization() {
         "user".to_string(),
         "-c".to_string(),
     ];
-    assert!(kernel.handle(args_space).await.is_ok());
+    assert!(kernel.handle(args_space).is_ok());
     assert!(MAKE_ROUTE_EXECUTED.load(Ordering::SeqCst));
 }
 
-#[tokio::test]
-async fn test_kernel_fuzzy_suggestion() {
+#[test]
+fn test_kernel_fuzzy_suggestion() {
     let kernel = Kernel::new("test-cli", "CLI Test Suite").register(GreetCommand);
 
     let args = vec!["test-cli".to_string(), "gret".to_string()];
 
-    let result = kernel.handle(args).await;
+    let result = kernel.handle(args);
     assert!(result.is_err());
     let err = result.unwrap_err();
     let err_msg = err.to_string();
@@ -169,13 +165,13 @@ async fn test_kernel_fuzzy_suggestion() {
     assert!(err_msg.contains("Did you mean `greet`?"));
 }
 
-#[tokio::test]
-async fn test_kernel_missing_required_argument() {
+#[test]
+fn test_kernel_missing_required_argument() {
     let kernel = Kernel::new("test-cli", "CLI Test Suite").register(GreetCommand);
 
     let args = vec!["test-cli".to_string(), "greet".to_string()];
 
-    let result = kernel.handle(args).await;
+    let result = kernel.handle(args);
     assert!(result.is_err());
     assert!(
         result
@@ -185,8 +181,8 @@ async fn test_kernel_missing_required_argument() {
     );
 }
 
-#[tokio::test]
-async fn test_kernel_help_and_version() {
+#[test]
+fn test_kernel_help_and_version() {
     let kernel = Kernel::new("test-cli", "CLI Test Suite")
         .version("2.5.0")
         .register(GreetCommand);
@@ -194,13 +190,11 @@ async fn test_kernel_help_and_version() {
     assert!(
         kernel
             .handle(vec!["test-cli".to_string(), "--help".to_string()])
-            .await
             .is_ok()
     );
     assert!(
         kernel
             .handle(vec!["test-cli".to_string(), "--version".to_string()])
-            .await
             .is_ok()
     );
     assert!(
@@ -210,7 +204,6 @@ async fn test_kernel_help_and_version() {
                 "greet".to_string(),
                 "--help".to_string()
             ])
-            .await
             .is_ok()
     );
 }
