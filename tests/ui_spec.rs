@@ -26,10 +26,7 @@ fn banner_and_instruction_lines_have_identical_visible_widths() {
     let output = ui.output_string().expect("buffer should contain banner");
     let lines: Vec<&str> = output.lines().filter(|line| !line.is_empty()).collect();
     assert_eq!(lines.len(), 4);
-    let widths: Vec<usize> = lines
-        .iter()
-        .map(|line| karigor::ui::visible_width(line))
-        .collect();
+    let widths: Vec<usize> = lines.iter().map(|line| ui::visible_width(line)).collect();
     for width in &widths {
         assert_eq!(*width, widths[0]);
     }
@@ -42,7 +39,7 @@ fn banner_and_instruction_lines_have_identical_visible_widths() {
     assert_eq!(inst_lines.len(), 6);
     let inst_widths: Vec<usize> = inst_lines
         .iter()
-        .map(|line| karigor::ui::visible_width(line))
+        .map(|line| ui::visible_width(line))
         .collect();
     for width in &inst_widths {
         assert_eq!(*width, inst_widths[0]);

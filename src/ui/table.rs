@@ -217,19 +217,11 @@ impl Table {
         let mut widths = vec![0; column_count];
 
         if let Some(ref header) = self.header {
-            for (index, cell) in header.iter().enumerate() {
-                for line in cell.content().lines() {
-                    widths[index] = widths[index].max(visible_width(line));
-                }
-            }
+            update_column_widths(&mut widths, header);
         }
 
         for row in &self.rows {
-            for (index, cell) in row.iter().enumerate() {
-                for line in cell.content().lines() {
-                    widths[index] = widths[index].max(visible_width(line));
-                }
-            }
+            update_column_widths(&mut widths, row);
         }
 
         widths
@@ -274,84 +266,26 @@ impl fmt::Display for Table {
 
         // Render top border
         if self.preset == TablePreset::Rounded {
-            let mut top_line = top_left.to_string();
-            for (index, width) in column_widths.iter().enumerate() {
-                top_line.push_str(&h_bar.repeat(width + 2));
-                if index + 1 < column_widths.len() {
-                    top_line.push_str(top_mid);
-                }
-            }
-            top_line.push_str(top_right);
+            let top_line =
+                format_horizontal_border(&column_widths, h_bar, top_left, top_mid, top_right);
             writeln!(formatter, "{top_line}")?;
         }
 
         // Render header if present
         if let Some(ref header) = self.header {
-            let mut max_lines = 1;
-            let mut cell_lines: Vec<Vec<&str>> = Vec::new();
-            for cell in header {
-                let lines: Vec<&str> = cell.content().lines().collect();
-                max_lines = max_lines.max(lines.len().max(1));
-                cell_lines.push(lines);
-            }
-
-            for line_idx in 0..max_lines {
-                let mut row_str = v_bar.to_string();
-                for (col_idx, width) in column_widths.iter().enumerate() {
-                    let cell = header.get(col_idx);
-                    let line_content = cell_lines
-                        .get(col_idx)
-                        .and_then(|lines| lines.get(line_idx).copied())
-                        .unwrap_or("");
-                    let rendered = cell.map_or_else(
-                        || " ".repeat(*width),
-                        |c| c.render_line(line_content, *width),
-                    );
-                    row_str.push_str(&format!(" {rendered} {v_bar}"));
-                }
-                writeln!(formatter, "{row_str}")?;
-            }
+            write_table_row(formatter, header, &column_widths, v_bar)?;
 
             // Divider after header
             if self.preset != TablePreset::Plain {
-                let mut div_line = mid_left.to_string();
-                for (index, width) in column_widths.iter().enumerate() {
-                    div_line.push_str(&h_bar.repeat(width + 2));
-                    if index + 1 < column_widths.len() {
-                        div_line.push_str(mid_mid);
-                    }
-                }
-                div_line.push_str(mid_right);
+                let div_line =
+                    format_horizontal_border(&column_widths, h_bar, mid_left, mid_mid, mid_right);
                 writeln!(formatter, "{div_line}")?;
             }
         }
 
         // Render data rows
         for (row_idx, row) in self.rows.iter().enumerate() {
-            let mut max_lines = 1;
-            let mut cell_lines: Vec<Vec<&str>> = Vec::new();
-            for cell in row {
-                let lines: Vec<&str> = cell.content().lines().collect();
-                max_lines = max_lines.max(lines.len().max(1));
-                cell_lines.push(lines);
-            }
-
-            for line_idx in 0..max_lines {
-                let mut row_str = v_bar.to_string();
-                for (col_idx, width) in column_widths.iter().enumerate() {
-                    let cell = row.get(col_idx);
-                    let line_content = cell_lines
-                        .get(col_idx)
-                        .and_then(|lines| lines.get(line_idx).copied())
-                        .unwrap_or("");
-                    let rendered = cell.map_or_else(
-                        || " ".repeat(*width),
-                        |c| c.render_line(line_content, *width),
-                    );
-                    row_str.push_str(&format!(" {rendered} {v_bar}"));
-                }
-                writeln!(formatter, "{row_str}")?;
-            }
+            write_table_row(formatter, row, &column_widths, v_bar)?;
 
             // Row dividers for compact if needed, or spacing
             if self.preset == TablePreset::Compact && row_idx + 1 < self.rows.len() {
@@ -361,19 +295,73 @@ impl fmt::Display for Table {
 
         // Render bottom border
         if self.preset == TablePreset::Rounded {
-            let mut bot_line = bot_left.to_string();
-            for (index, width) in column_widths.iter().enumerate() {
-                bot_line.push_str(&h_bar.repeat(width + 2));
-                if index + 1 < column_widths.len() {
-                    bot_line.push_str(bot_mid);
-                }
-            }
-            bot_line.push_str(bot_right);
+            let bot_line =
+                format_horizontal_border(&column_widths, h_bar, bot_left, bot_mid, bot_right);
             write!(formatter, "{bot_line}")?;
         }
 
         Ok(())
     }
+}
+
+fn update_column_widths(widths: &mut [usize], cells: &[Cell]) {
+    for (index, cell) in cells.iter().enumerate() {
+        for line in cell.content().lines() {
+            widths[index] = widths[index].max(visible_width(line));
+        }
+    }
+}
+
+fn format_horizontal_border(
+    column_widths: &[usize],
+    h_bar: &str,
+    left: &str,
+    mid: &str,
+    right: &str,
+) -> String {
+    let mut line = left.to_string();
+    for (index, width) in column_widths.iter().enumerate() {
+        line.push_str(&h_bar.repeat(width + 2));
+        if index + 1 < column_widths.len() {
+            line.push_str(mid);
+        }
+    }
+    line.push_str(right);
+    line
+}
+
+fn write_table_row(
+    formatter: &mut fmt::Formatter<'_>,
+    cells: &[Cell],
+    column_widths: &[usize],
+    v_bar: &str,
+) -> fmt::Result {
+    let mut max_lines = 1;
+    let mut cell_lines: Vec<Vec<&str>> = Vec::new();
+    for cell in cells {
+        let lines: Vec<&str> = cell.content().lines().collect();
+        max_lines = max_lines.max(lines.len().max(1));
+        cell_lines.push(lines);
+    }
+
+    for line_idx in 0..max_lines {
+        let mut row_str = v_bar.to_string();
+        for (col_idx, width) in column_widths.iter().enumerate() {
+            let cell = cells.get(col_idx);
+            let line_content = cell_lines
+                .get(col_idx)
+                .and_then(|lines| lines.get(line_idx).copied())
+                .unwrap_or("");
+            let rendered = cell.map_or_else(
+                || " ".repeat(*width),
+                |c| c.render_line(line_content, *width),
+            );
+            row_str.push_str(&format!(" {rendered} {v_bar}"));
+        }
+        writeln!(formatter, "{row_str}")?;
+    }
+
+    Ok(())
 }
 
 /// Helper module maintaining compatibility with the previous comfy-table preset paths.

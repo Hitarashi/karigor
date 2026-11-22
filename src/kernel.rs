@@ -409,15 +409,7 @@ impl Kernel {
                             if index < args_slice.len() && !args_slice[index].starts_with('-') {
                                 let val = args_slice[index].clone();
                                 self.validate_flag_choice(flag, &val)?;
-                                match parsed_flags.get_mut(&flag.name) {
-                                    Some(FlagValue::Array(items)) => {
-                                        items.push(val);
-                                    }
-                                    _ => {
-                                        parsed_flags
-                                            .insert(flag.name.clone(), FlagValue::Array(vec![val]));
-                                    }
-                                }
+                                append_array_flag(&mut parsed_flags, &flag.name, val);
                             } else {
                                 return Err(Error::InvalidFlag(format!(
                                     "Option `--{}` requires a value",
@@ -466,17 +458,7 @@ impl Kernel {
                                 if index < args_slice.len() && !args_slice[index].starts_with('-') {
                                     let val = args_slice[index].clone();
                                     self.validate_flag_choice(flag, &val)?;
-                                    match parsed_flags.get_mut(&flag.name) {
-                                        Some(FlagValue::Array(items)) => {
-                                            items.push(val);
-                                        }
-                                        _ => {
-                                            parsed_flags.insert(
-                                                flag.name.clone(),
-                                                FlagValue::Array(vec![val]),
-                                            );
-                                        }
-                                    }
+                                    append_array_flag(&mut parsed_flags, &flag.name, val);
                                 } else {
                                     return Err(Error::InvalidFlag(format!(
                                         "Option `-{}` requires a value",
@@ -708,6 +690,17 @@ impl Kernel {
                 writer.print(&format!("  {:20} {}", flag_label.cyan(), flag.description));
             }
             writer.print("");
+        }
+    }
+}
+
+fn append_array_flag(parsed_flags: &mut HashMap<String, FlagValue>, name: &str, val: String) {
+    match parsed_flags.get_mut(name) {
+        Some(FlagValue::Array(items)) => {
+            items.push(val);
+        }
+        _ => {
+            parsed_flags.insert(name.to_string(), FlagValue::Array(vec![val]));
         }
     }
 }
